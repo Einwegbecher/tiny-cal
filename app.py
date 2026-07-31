@@ -76,15 +76,39 @@ def dumm():
     except Exception as e:
         print(f"Error encountered: {e}")
 
-
 @app.route('/')
 def index():
     """Render the main page with the form."""
     return render_template('index.html', printed_message=None)
 
-
 def display_on_epaper(message):
-    print("hi")
+    from lib.waveshare_epd import epd2in15g 
+
+    try:
+        epd = epd2in15g.EPD()
+        epd.init()
+        epd.Clear()
+
+        # Load system font with safety fallback
+        try:
+            system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
+        except OSError:
+            system_font = ImageFont.load_default()
+        
+        canvas = Image.new('1', (epd.height, epd.width), 255)
+        draw = ImageDraw.Draw(canvas)
+        draw.text((10, 30), (message), font=system_font, fill=0)     # Draw text onto the portrait canvas
+        rotated_canvas = canvas.rotate(90, expand=True) # Rotate the canvas 90 degrees to fit the landscape hardware screen
+        print("Refreshing Screen (Blinking will take ~20 seconds)...")
+        epd.display(epd.getbuffer(rotated_canvas))
+        print("Frame 1 Complete.")
+
+        print("Finalizing updates. Putting display to sleep...")
+        epd.sleep()
+        print("Finished successfully!")
+
+    except Exception as e:
+        print(f"Error encountered: {e}")
 
 
 @app.route('/print', methods=['POST'])
@@ -96,10 +120,7 @@ def print_message():
     # Get the message from the form
     message = request.form.get('message', 'Hello World')
     
-    # Print to CLI
     print(f"Printed: {message}")
-    
-    # Display on e-paper
     display_on_epaper(message)
     
     # Render the template with success message
