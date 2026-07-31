@@ -75,10 +75,19 @@
             min-height: 120px;
             line-height: 1.5;
             white-space: pre-wrap;
+            word-wrap: break-word;
         }
         
         .text-input-with-preview:focus {
             border-color: #667eea;
+        }
+        
+        .text-input-with-preview.warning {
+            border-color: #ffc107;
+        }
+        
+        .text-input-with-preview.error {
+            border-color: #dc3545;
         }
         
         .preview-overlay {
@@ -147,6 +156,13 @@
             transform: translateY(0);
         }
         
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
         .message {
             margin-top: 25px;
             padding: 15px;
@@ -162,6 +178,14 @@
             background: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
+            display: block;
+            opacity: 1;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
             display: block;
             opacity: 1;
         }
@@ -200,6 +224,22 @@
         .tips li {
             margin-bottom: 5px;
         }
+        
+        .line-counter {
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .line-counter.warning {
+            color: #ffc107;
+        }
+        
+        .line-counter.error {
+            color: #dc3545;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -212,9 +252,10 @@
                 <label for="message">Your Message:</label>
                 <div class="text-input-container">
                     <textarea id="message" name="message" class="text-input-with-preview" 
-                              placeholder="Enter text to display..." required>{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display." }}</textarea>
+                              placeholder="Enter text to display..." required oninput="updatePreview()" onkeydown="handleKeyDown(event)">{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display." }}</textarea>
                     <div class="preview-overlay" id="previewOverlay"></div>
                 </div>
+                <div class="line-counter" id="lineCounter"></div>
             </div>
             
             <div class="form-group font-selector">
@@ -228,7 +269,7 @@
                 </select>
             </div>
             
-            <button type="submit">Display on E-Paper</button>
+            <button type="submit" id="submitBtn">Display on E-Paper</button>
         </form>
         
         <div class="message" id="statusMessage"></div>
@@ -258,6 +299,7 @@
                 <li>Enter multiple lines by pressing Enter</li>
                 <li>Display may take ~20 seconds to refresh</li>
                 <li>Preview overlay shows how text will wrap</li>
+                <li>Line counter shows current/max lines</li>
                 <li>Maximum lines: Medium=~8, XLarge=~3</li>
             </ul>
         </div>
@@ -319,12 +361,39 @@
         function updatePreview() {
             const textarea = document.getElementById('message');
             const preview = document.getElementById('previewOverlay');
+            const lineCounter = document.getElementById('lineCounter');
+            const submitBtn = document.getElementById('submitBtn');
             const limits = getCurrentLimits();
             
             const lines = wrapTextForPreview(textarea.value, limits.maxCharsPerLine);
             const displayLines = lines.slice(0, limits.maxLines);
+            const totalLines = lines.length;
             
             preview.textContent = displayLines.join('\n');
+            
+            // Update line counter
+            lineCounter.textContent = `${totalLines}/${limits.maxLines} lines`;
+            lineCounter.className = 'line-counter';
+            
+            // Update textarea border color based on line count
+            textarea.className = 'text-input-with-preview';
+            
+            if (totalLines > limits.maxLines) {
+                lineCounter.className = 'line-counter error';
+                textarea.className = 'text-input-with-preview error';
+                lineCounter.textContent = `${totalLines}/${limits.maxLines} lines - TOO MANY!`;
+            } else if (totalLines > limits.maxLines * 0.8) {
+                lineCounter.className = 'line-counter warning';
+                textarea.className = 'text-input-with-preview warning';
+            }
+        }
+        
+        function handleKeyDown(event) {
+            // Allow Enter key to create new lines
+            if (event.key === 'Enter') {
+                // Let the newline happen naturally
+                setTimeout(updatePreview, 0);
+            }
         }
         
         // Initialize on page load
