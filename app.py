@@ -6,55 +6,64 @@ from flask import Flask, render_template, request
 
 app = Flask(__name__)
 
-# ============================================================================
-# GPIO CLEANUP - Must happen BEFORE importing waveshare_epd
-# The waveshare library initializes GPIO during import, so we need to clean up first
-# ============================================================================
-try:
-    import gpiozero
-    import gpiozero.devices
-    
-    # Clean up all GPIO devices before importing waveshare
-    print("Cleaning up GPIO devices before display initialization...")
-    try:
-        gpiozero.Device.shutdown_all()
-        print("GPIO cleanup completed")
-    except Exception as e:
-        print(f"Warning during GPIO cleanup: {e}")
-    
-    time.sleep(0.5)  # Give time for cleanup
-    GPIOZERO_AVAILABLE = True
-except ImportError:
-    GPIOZERO_AVAILABLE = False
-    print("Warning: gpiozero not available, cannot clean up GPIO")
-
-# ============================================================================
-# Now import waveshare e-paper library (after GPIO cleanup)
-# ============================================================================
-EPD_AVAILABLE = False
+# Global flag for EPD availability
 EPD_MODULE = None
+EPD_AVAILABLE = False
 
-try:
-    from lib.waveshare_epd import epd2in15g
-    EPD_MODULE = epd2in15g
-    EPD_AVAILABLE = True
-    print("Waveshare epd2in15g library loaded successfully")
-except ImportError:
+
+def cleanup_and_load_epd():
+    """
+    Clean up GPIO and load the Waveshare e-paper library.
+    This is called lazily only when display_on_epaper is first invoked.
+    """
+    global EPD_MODULE, EPD_AVAILABLE
+    
+    if EPD_AVAILABLE:
+        return True
+    
+    # Clean up GPIO first
+    try:
+        import gpiozero
+        print("Cleaning up GPIO devices...")
+        try:
+            gpiozero.Device.shutdown_all()
+            print("GPIO cleanup completed")
+        except Exception as e:
+            print(f"Warning during GPIO cleanup: {e}")
+        time.sleep(0.5)
+    except ImportError:
+        print("Warning: gpiozero not available, cannot clean up GPIO")
+    
+    # Now try to import the waveshare library
+    try:
+        from lib.waveshare_epd import epd2in15g
+        EPD_MODULE = epd2in15g
+        EPD_AVAILABLE = True
+        print("Waveshare epd2in15g library loaded successfully")
+        return True
+    except ImportError:
+        pass
+    
     try:
         from waveshare_epd import epd2in15g
         EPD_MODULE = epd2in15g
         EPD_AVAILABLE = True
         print("Waveshare epd2in15g library loaded successfully")
+        return True
     except ImportError:
-        try:
-            sys.path.append('/usr/local/lib/python3/dist-packages')
-            from lib.waveshare_epd import epd2in15g
-            EPD_MODULE = epd2in15g
-            EPD_AVAILABLE = True
-            print("Waveshare epd2in15g library loaded successfully")
-        except ImportError:
-            print("Warning: Waveshare e-paper library not available. Display functionality disabled.")
-            print("Please install: pip install waveshare-epd or ensure lib/waveshare_epd is in your PYTHONPATH")
+        pass
+    
+    try:
+        sys.path.append('/usr/local/lib/python3/dist-packages')
+        from lib.waveshare_epd import epd2in15g
+        EPD_MODULE = epd2in15g
+        EPD_AVAILABLE = True
+        print("Waveshare epd2in15g library loaded successfully")
+        return True
+    except ImportError:
+        print("Warning: Waveshare e-paper library not available. Display functionality disabled.")
+        print("Please install: pip install waveshare-epd or ensure lib/waveshare_epd is in your PYTHONPATH")
+        return False
 
 
 @app.route('/')
@@ -69,7 +78,8 @@ def display_on_epaper(message):
     Uses the same approach as quick_test.py: creates canvas with reversed dimensions
     (height x width) for portrait design, then rotates 90 degrees for landscape display.
     """
-    if not EPD_AVAILABLE:
+    # Lazy load the EPD library on first use
+    if not cleanup_and_load_epd():
         print("E-paper display not available - library not imported")
         return False
     
