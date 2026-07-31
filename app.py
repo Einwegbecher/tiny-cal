@@ -9,27 +9,51 @@ app = Flask(__name__)
 # Try to import the waveshare e-paper library
 # Try multiple possible import paths
 EPD_AVAILABLE = False
+EPD_MODULE = None
 try:
     from lib.waveshare_epd import epd2in15g
+    EPD_MODULE = epd2in15g
     EPD_AVAILABLE = True
 except ImportError:
     try:
         from waveshare_epd import epd2in15g
+        EPD_MODULE = epd2in15g
         EPD_AVAILABLE = True
     except ImportError:
         try:
             sys.path.append('/usr/local/lib/python3/dist-packages')
             from lib.waveshare_epd import epd2in15g
+            EPD_MODULE = epd2in15g
             EPD_AVAILABLE = True
         except ImportError:
             print("Warning: Waveshare e-paper library not available. Display functionality disabled.")
             print("Please install: pip install waveshare-epd or ensure lib/waveshare_epd is in your PYTHONPATH")
+
+# Try to import gpiozero for cleanup
+try:
+    import gpiozero
+    GPIOZERO_AVAILABLE = True
+except ImportError:
+    GPIOZERO_AVAILABLE = False
+    print("Warning: gpiozero not available, GPIO cleanup disabled")
 
 
 @app.route('/')
 def index():
     """Render the main page with the form."""
     return render_template('index.html', printed_message=None)
+
+
+def cleanup_gpio():
+    """Clean up any stuck GPIO pins before initializing the display."""
+    if GPIOZERO_AVAILABLE:
+        try:
+            # Shutdown all GPIO devices
+            gpiozero.Device.shutdown_all()
+            print("Cleaned up GPIO devices")
+            time.sleep(0.5)  # Give time for cleanup
+        except Exception as e:
+            print(f"Warning: Could not clean up GPIO: {e}")
 
 
 def display_on_epaper(message):
@@ -44,8 +68,12 @@ def display_on_epaper(message):
     
     try:
         print(f"Attempting to display: '{message}'")
+        
+        # Clean up GPIO before initializing
+        cleanup_gpio()
+        
         # Initialize the e-paper display
-        epd = epd2in15g.EPD()
+        epd = EPD_MODULE.EPD()
         print("EPD object created")
         
         epd.init()
