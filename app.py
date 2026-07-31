@@ -12,10 +12,30 @@ try:
     epd = epd2in15g.EPD()
     epd.init()
     epd.Clear()
+
+    # Load system font with safety fallback
     try:
         system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
     except OSError:
         system_font = ImageFont.load_default()
+
+    # ==========================================
+    # STEP 1: RENDER AND DISPLAY FIRST TEXT
+    # ==========================================
+    print("Preparing Frame 1...")
+    
+    # Create canvas with REVERSED dimensions (Height x Width) for portrait design
+    canvas1 = Image.new('1', (epd.height, epd.width), 255)
+    draw1 = ImageDraw.Draw(canvas1)
+    draw1.text((10, 30), "Du Penis", font=system_font, fill=0)     # Draw text onto the portrait canvas
+    rotated_canvas1 = canvas1.rotate(90, expand=True) # Rotate the canvas 90 degrees to fit the landscape hardware screen
+    print("Refreshing Screen (Blinking will take ~20 seconds)...")
+    epd.display(epd.getbuffer(rotated_canvas1))
+    print("Frame 1 Complete.")
+    print("Finalizing updates. Putting display to sleep...")
+    epd.sleep()
+    print("Finished successfully!")
+
 except Exception as e:
     print(f"Error encountered: {e}")
 
@@ -39,7 +59,7 @@ def print_message():
     
     # Print to CLI
     print(f"Printed: {message}")
-    try:
+    """try:
         canvas = Image.new('1', (epd.height, epd.width), 255)
         draw = ImageDraw.Draw(canvas1)
         draw.text((10, 30), {message}, font=system_font, fill=0)     # Draw text onto the portrait canvas
@@ -48,7 +68,7 @@ def print_message():
         epd.display(epd.getbuffer(rotated_canvas1))
         epd.sleep()
     except Exception as e:
-        print(f"Error encountered: {e}")
+        print(f"Error encountered: {e}")"""
 
     # Store the last printed message
     #last_printed_message = message
