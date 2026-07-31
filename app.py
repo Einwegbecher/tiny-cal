@@ -7,12 +7,23 @@ from flask import Flask, render_template, request
 app = Flask(__name__)
 
 # Try to import the waveshare e-paper library
+# Try multiple possible import paths
+EPD_AVAILABLE = False
 try:
     from lib.waveshare_epd import epd2in15g
     EPD_AVAILABLE = True
 except ImportError:
-    EPD_AVAILABLE = False
-    print("Warning: Waveshare e-paper library not available")
+    try:
+        from waveshare_epd import epd2in15g
+        EPD_AVAILABLE = True
+    except ImportError:
+        try:
+            sys.path.append('/usr/local/lib/python3/dist-packages')
+            from lib.waveshare_epd import epd2in15g
+            EPD_AVAILABLE = True
+        except ImportError:
+            print("Warning: Waveshare e-paper library not available. Display functionality disabled.")
+            print("Please install: pip install waveshare-epd or ensure lib/waveshare_epd is in your PYTHONPATH")
 
 
 @app.route('/')
@@ -28,20 +39,27 @@ def display_on_epaper(message):
     (height x width) for portrait design, then rotates 90 degrees for landscape display.
     """
     if not EPD_AVAILABLE:
-        print("E-paper display not available")
+        print("E-paper display not available - library not imported")
         return False
     
     try:
+        print(f"Attempting to display: '{message}'")
         # Initialize the e-paper display
         epd = epd2in15g.EPD()
+        print("EPD object created")
+        
         epd.init()
+        print("EPD initialized")
+        
         epd.Clear()
+        print("EPD cleared")
         
         # Load system font with safety fallback
         try:
             system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
         except OSError:
             system_font = ImageFont.load_default()
+            print("Using default font")
         
         # Create canvas with REVERSED dimensions (Height x Width) for portrait design
         # This matches the approach in quick_test.py
@@ -51,9 +69,11 @@ def display_on_epaper(message):
         
         # Draw the message on the portrait canvas
         draw.text((10, 30), message, font=system_font, fill=0)
+        print("Text drawn on canvas")
         
         # Rotate the canvas 90 degrees to fit the landscape hardware screen
         rotated_canvas = canvas.rotate(90, expand=True)
+        print("Canvas rotated")
         
         # Display the rotated image
         print("Displaying message on e-paper (this may take ~20 seconds)...")
@@ -62,10 +82,14 @@ def display_on_epaper(message):
         
         # Put the display to sleep to save power
         epd.sleep()
+        print("EPD put to sleep")
         return True
         
     except Exception as e:
+        import traceback
         print(f"Error displaying on e-paper: {e}")
+        print("Full traceback:")
+        traceback.print_exc()
         return False
 
 
