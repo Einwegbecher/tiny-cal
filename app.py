@@ -145,29 +145,67 @@ def get_calendar_events(config):
         calendar = calendars[0]
         print(f"Using calendar: {calendar}")
         
-        # Get today's date range
-        today = datetime.now().date()
+        # Get today's date in UTC to avoid timezone issues
+        today = datetime.utcnow().date()
         start = datetime.combine(today, datetime.min.time())
-        end = datetime.combine(today + timedelta(days=1), datetime.min.time())  # Next day at midnight
+        end = datetime.combine(today + timedelta(days=1), datetime.min.time())  # Next day at midnight UTC
         
-        print(f"Searching for events between {start} and {end}")
+        print(f"Searching for events between {start} and {end} (UTC)")
         
-        # Search for events today
+        # Search for events in a wider range first (to catch multi-day events)
+        search_start = start - timedelta(days=1)  # Yesterday
+        search_end = end + timedelta(days=1)  # Day after tomorrow
+        
         events = calendar.search(
-            start=start,
-            end=end,
+            start=search_start,
+            end=search_end,
             event=True
         )
         
-        print(f"Found {len(events)} events")
+        print(f"Found {len(events)} events in extended range")
+        
+        # Now filter to only events that are actually on today
+        today_events = []
+        for event in events:
+            try:
+                # Get the event's start date
+                dt_start = event.vobject_instance.vevent.dtstart.value
+                
+                # Convert to date if it's a datetime
+                if isinstance(dt_start, datetime):
+                    event_date = dt_start.date()
+                else:
+                    event_date = dt_start
+                
+                # Also check end date for multi-day events
+                dt_end = event.vobject_instance.vevent.dtend.value
+                if isinstance(dt_end, datetime):
+                    event_end_date = dt_end.date()
+                else:
+                    event_end_date = dt_end
+                
+                # Check if event is on today
+                # Event is on today if:
+                # - It starts today, OR
+                # - It ends today, OR
+                # - It spans today (start <= today <= end)
+                if (event_date <= today <= event_end_date):
+                    today_events.append(event)
+                    print(f"Event on {event_date} to {event_end_date}: {event.vobject_instance.vevent.summary.value}")
+                else:
+                    print(f"Skipping event on {event_date} to {event_end_date}")
+            except Exception as e:
+                print(f"Error checking event date: {e}")
+        
+        print(f"Filtered to {len(today_events)} events for today")
         
         # Extract and format event summaries
         event_summaries = []
-        for event in events:
+        for event in today_events:
             try:
                 formatted = format_calendar_event(event, start)
                 event_summaries.append(formatted)
-                print(f"Event: {formatted}")
+                print(f"Today's Event: {formatted}")
             except Exception as e:
                 print(f"Error processing event: {e}")
                 # Fallback to just summary
