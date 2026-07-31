@@ -22,46 +22,72 @@ def index():
 
 
 def display_on_epaper(message):
-    """
-    Display a message on the Waveshare e-paper display.
-    Handles the display initialization, text rendering, and cleanup.
-    """
-    if not EPD_AVAILABLE:
-        print("E-paper display not available")
-        return False
-    
+    from lib.waveshare_epd import epd2in15g 
+
     try:
-        # Initialize the e-paper display
         epd = epd2in15g.EPD()
         epd.init()
         epd.Clear()
-        
+
         # Load system font with safety fallback
         try:
             system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
         except OSError:
             system_font = ImageFont.load_default()
+
+        # ==========================================
+        # STEP 1: RENDER AND DISPLAY FIRST TEXT
+        # ==========================================
+        print("Preparing Frame 1...")
         
-        # Create canvas - note: epd2in15g is 200x200 pixels
-        print(f"Creating canvas for e-paper (width: {epd.width}, height: {epd.height})")
-        canvas = Image.new('1', (epd.width, epd.height), 255)  # '1' mode for 1-bit image
-        draw = ImageDraw.Draw(canvas)
+        # Create canvas with REVERSED dimensions (Height x Width) for portrait design
+        canvas1 = Image.new('1', (epd.height, epd.width), 255)
+        draw1 = ImageDraw.Draw(canvas1)
+        draw1.text((10, 30), "Du Penis", font=system_font, fill=0)     # Draw text onto the portrait canvas
+        rotated_canvas1 = canvas1.rotate(90, expand=True) # Rotate the canvas 90 degrees to fit the landscape hardware screen
+        print("Refreshing Screen (Blinking will take ~20 seconds)...")
+        epd.display(epd.getbuffer(rotated_canvas1))
+        print("Frame 1 Complete.")
+
+        print("Waiting 25 seconds...")
+        time.sleep(25)
+        print("Preparing Frame 2...")
+        canvas2 = Image.new('1', (epd.height, epd.width), 255)
+        draw2 = ImageDraw.Draw(canvas2)
+        lines = [
+            "Keep going,",
+            "Keep Working",
+            "You got this!",
+            "Stay strong!"
+        ]
         
-        # Draw the message on the canvas
-        draw.text((10, 30), message, font=system_font, fill=0)
+        y_position = 30
+        for line in lines:
+            draw2.text((10, y_position), line, font=system_font, fill=0)
+            y_position += 20  # Increment y for the next line (adjust spacing as needed)
+
+        rotated_canvas2 = canvas2.rotate(90, expand=True)
+        print("Refreshing Screen (Blinking will take ~20 seconds)...")
+        epd.display(epd.getbuffer(rotated_canvas2))
+        # Draw new text
         
-        # Display the image
-        print("Displaying message on e-paper...")
-        epd.display(epd.getbuffer(canvas))
+        #draw2.text((30, 60), "Keep Winning!" , font=system_font, fill=0)
+
+        #img = Image.open('bild.png')
+        #img_processed = img.resize((epd.width, epd.height)).convert('1')
+        #epd.display(epd.getbuffer(img_processed))
+        # Rotate the canvas 90 degrees
+        #rotated_canvas2 = canvas2.rotate(90, expand=True)
+
+        #print("Refreshing Screen Again...")
+        #epd.display(epd.getbuffer(rotated_canvas2))
         
-        # Put the display to sleep to save power
+        # ==========================================
+        # STEP 4: SAFE DISCONNECT
+        # ==========================================
+        print("Finalizing updates. Putting display to sleep...")
         epd.sleep()
-        print("Message displayed successfully on e-paper!")
-        return True
-        
-    except Exception as e:
-        print(f"Error displaying on e-paper: {e}")
-        return False
+        print("Finished successfully!")
 
 
 @app.route('/print', methods=['POST'])
