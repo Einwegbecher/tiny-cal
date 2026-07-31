@@ -184,16 +184,15 @@ def get_calendar_events(config):
                 else:
                     event_end_date = dt_end
                 
-                # Check if event is on today
-                # Event is on today if:
-                # - It starts today, OR
-                # - It ends today, OR
-                # - It spans today (start <= today <= end)
-                if (event_date <= today <= event_end_date):
+                # Check if event is on today - ONLY include if:
+                # - It starts today (event_date == today), OR
+                # - It's an all-day event that includes today (event_date <= today < event_end_date)
+                # This excludes events that ended yesterday
+                if (event_date == today) or (event_date < today < event_end_date):
                     today_events.append(event)
-                    print(f"Event on {event_date} to {event_end_date}: {event.vobject_instance.vevent.summary.value}")
+                    print(f"INCLUDING event on {event_date} to {event_end_date}: {event.vobject_instance.vevent.summary.value}")
                 else:
-                    print(f"Skipping event on {event_date} to {event_end_date}")
+                    print(f"EXCLUDING event on {event_date} to {event_end_date}: {event.vobject_instance.vevent.summary.value}")
             except Exception as e:
                 print(f"Error checking event date: {e}")
         
