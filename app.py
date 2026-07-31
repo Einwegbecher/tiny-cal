@@ -87,6 +87,8 @@ def display_on_epaper(message):
     try:
         epd = epd2in15g.EPD()
         epd.init()
+        print("EPD initialized")
+        
         epd.Clear()
 
         # Load system font with safety fallback
@@ -94,6 +96,7 @@ def display_on_epaper(message):
             system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
         except OSError:
             system_font = ImageFont.load_default()
+            print("Using default font")
         
         canvas = Image.new('1', (epd.height, epd.width), 255)
         draw = ImageDraw.Draw(canvas)
