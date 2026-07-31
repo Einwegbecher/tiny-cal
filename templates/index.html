@@ -93,11 +93,7 @@
             font-weight: 500;
         }
         
-        .text-input-container {
-            position: relative;
-        }
-        
-        .text-input-with-preview {
+        textarea {
             width: 100%;
             padding: 14px 16px;
             border: 2px solid #e1e5e9;
@@ -113,32 +109,16 @@
             word-wrap: break-word;
         }
         
-        .text-input-with-preview:focus {
+        textarea:focus {
             border-color: #667eea;
         }
         
-        .text-input-with-preview.warning {
+        textarea.warning {
             border-color: #ffc107;
         }
         
-        .text-input-with-preview.error {
+        textarea.error {
             border-color: #dc3545;
-        }
-        
-        .preview-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-            opacity: 0.3;
-            padding: 14px 16px;
-            white-space: pre-wrap;
-            line-height: 1.5;
-            overflow: hidden;
-            font-style: italic;
-            color: #999;
         }
         
         .font-selector {
@@ -322,9 +302,9 @@
         <p class="description">Display text or today's calendar on your e-paper screen.</p>
         
         <div class="tabs">
-            <button type="button" class="tab active" onclick="showTab('text')">Text</button>
-            <button type="button" class="tab" onclick="showTab('calendar')">Calendar</button>
-            <button type="button" class="tab" onclick="showTab('config')">Config</button>
+            <button type="button" class="tab active" onclick="showTab(event, 'text')">Text</button>
+            <button type="button" class="tab" onclick="showTab(event, 'calendar')">Calendar</button>
+            <button type="button" class="tab" onclick="showTab(event, 'config')">Config</button>
         </div>
         
         <!-- Text Tab -->
@@ -332,11 +312,8 @@
             <form action="/print" method="POST" id="displayForm">
                 <div class="form-group">
                     <label for="message">Your Message:</label>
-                    <div class="text-input-container">
-                        <textarea id="message" name="message" class="text-input-with-preview" 
-                                  placeholder="Enter text to display..." required oninput="updatePreview()" onkeydown="handleKeyDown(event)">{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display." }}</textarea>
-                        <div class="preview-overlay" id="previewOverlay"></div>
-                    </div>
+                    <textarea id="message" name="message" 
+                              placeholder="Enter text to display..." required oninput="updatePreview()" onkeydown="handleKeyDown(event)">{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display." }}</textarea>
                     <div class="line-counter" id="lineCounter"></div>
                 </div>
                 
@@ -359,7 +336,7 @@
         <div id="calendar-tab" class="tab-content">
             <div class="config-section">
                 <h3>Today's Calendar</h3>
-                <p>Click below to fetch and display today's calendar entries from your configured WebDAV server.</p>
+                <p>Click below to fetch and display today's calendar entries from your configured CalDAV server.</p>
                 <form action="/display_calendar" method="GET">
                     <button type="submit">Display Today's Calendar</button>
                 </form>
@@ -369,31 +346,31 @@
         <!-- Config Tab -->
         <div id="config-tab" class="tab-content">
             <div class="config-section">
-                <h3>WebDAV Configuration</h3>
-                <p>Configure your WebDAV server to sync calendar entries.</p>
+                <h3>CalDAV Configuration</h3>
+                <p>Configure your CalDAV server to sync calendar entries.</p>
                 <form action="/save_config" method="POST">
                     <div class="checkbox-group">
-                        <input type="checkbox" id="webdav_enabled" name="webdav_enabled" 
-                               {% if config.get('webdav_enabled') %}checked{% endif %}>
-                        <label for="webdav_enabled">Enable WebDAV Calendar Sync</label>
+                        <input type="checkbox" id="caldav_enabled" name="caldav_enabled" 
+                               {% if config.get('caldav_enabled') %}checked{% endif %}>
+                        <label for="caldav_enabled">Enable CalDAV Calendar Sync</label>
                     </div>
                     
                     <div class="form-group">
-                        <label for="webdav_url">WebDAV URL:</label>
-                        <input type="url" id="webdav_url" name="webdav_url" 
-                               value="{{ config.get('webdav_url', '') }}" placeholder="https://your-server.com/calendar.ics">
+                        <label for="caldav_url">CalDAV URL:</label>
+                        <input type="url" id="caldav_url" name="caldav_url" 
+                               value="{{ config.get('caldav_url', '') }}" placeholder="https://your-server.com/caldav/calendar">
                     </div>
                     
                     <div class="form-group">
-                        <label for="webdav_username">Username:</label>
-                        <input type="text" id="webdav_username" name="webdav_username" 
-                               value="{{ config.get('webdav_username', '') }}" placeholder="username">
+                        <label for="caldav_username">Username:</label>
+                        <input type="text" id="caldav_username" name="caldav_username" 
+                               value="{{ config.get('caldav_username', '') }}" placeholder="username">
                     </div>
                     
                     <div class="form-group">
-                        <label for="webdav_password">Password:</label>
-                        <input type="password" id="webdav_password" name="webdav_password" 
-                               value="{{ config.get('webdav_password', '') }}" placeholder="password">
+                        <label for="caldav_password">Password:</label>
+                        <input type="password" id="caldav_password" name="caldav_password" 
+                               value="{{ config.get('caldav_password', '') }}" placeholder="password">
                     </div>
                     
                     <button type="submit">Save Configuration</button>
@@ -427,17 +404,16 @@
                 <li>Text automatically wraps to fit the display width (296px)</li>
                 <li>Enter multiple lines by pressing Enter</li>
                 <li>Display may take ~20 seconds to refresh</li>
-                <li>Preview overlay shows how text will wrap</li>
                 <li>Line counter shows current/max lines</li>
                 <li>Maximum lines: Medium=7, XLarge=3</li>
-                <li>Configure WebDAV in Config tab to display calendar</li>
+                <li>Configure CalDAV in Config tab to display calendar</li>
             </ul>
         </div>
     </div>
     
     <script>
         // Tab switching
-        function showTab(tabName) {
+        function showTab(event, tabName) {
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
@@ -448,7 +424,7 @@
             
             // Show selected tab
             document.getElementById(tabName + '-tab').classList.add('active');
-            event.target.classList.add('active');
+            event.currentTarget.classList.add('active');
         }
         
         // Character width estimates for preview
@@ -503,30 +479,26 @@
         
         function updatePreview() {
             const textarea = document.getElementById('message');
-            const preview = document.getElementById('previewOverlay');
             const lineCounter = document.getElementById('lineCounter');
             const limits = getCurrentLimits();
             
             const lines = wrapTextForPreview(textarea.value, limits.maxCharsPerLine);
-            const displayLines = lines.slice(0, limits.maxLines);
             const totalLines = lines.length;
-            
-            preview.textContent = displayLines.join('\n');
             
             // Update line counter
             lineCounter.textContent = `${totalLines}/${limits.maxLines} lines`;
             lineCounter.className = 'line-counter';
             
             // Update textarea border color based on line count
-            textarea.className = 'text-input-with-preview';
+            textarea.className = '';
             
             if (totalLines > limits.maxLines) {
                 lineCounter.className = 'line-counter error';
-                textarea.className = 'text-input-with-preview error';
+                textarea.className = 'error';
                 lineCounter.textContent = `${totalLines}/${limits.maxLines} lines - TOO MANY!`;
             } else if (totalLines > limits.maxLines * 0.8) {
                 lineCounter.className = 'line-counter warning';
-                textarea.className = 'text-input-with-preview warning';
+                textarea.className = 'warning';
             }
         }
         

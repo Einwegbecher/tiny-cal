@@ -8,6 +8,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 import xml.etree.ElementTree as ET
 import json
+import caldav
 
 app = Flask(__name__)
 app.secret_key = 'e-paper-display-secret-key-12345'
@@ -28,7 +29,7 @@ CHAR_WIDTHS = {
 DISPLAY_WIDTH = 296
 DISPLAY_HEIGHT = 160
 
-# Max lines for each font size (adjusted based on actual testing)
+# Max lines for each font size
 MAX_LINES = {
     'medium': 7,   # 7 lines fit with medium font
     'xlarge': 3    # 3 lines fit with xlarge font
@@ -106,114 +107,56 @@ def wrap_text_dynamically(text, font, max_width):
     return lines
 
 
-def parse_icalendar(ical_content):
-    """Parse iCalendar content and extract today's events."""
-    events = []
+def get_calendar_events(config):
+    """Fetch today's events from CalDAV server."""
     try:
-        # Simple parsing - look for EVENT blocks
-        lines = ical_content.split('\n')
-        current_event = {}
-        in_event = False
+        if not config or not config.get('caldav_enabled'):
+            return []
         
-        for line in lines:
-            line = line.strip()
-            if line.startswith('BEGIN:VEVENT'):
-                in_event = True
-                current_event = {}
-            elif line.startswith('END:VEVENT'):
-                in_event = False
-                if current_event.get('summary'):
-                    events.append(current_event)
-                current_event = {}
-            elif in_event:
-                if line.startswith('SUMMARY:'):
-                    current_event['summary'] = line.split(':', 1)[1].strip()
-                elif line.startswith('DTSTART:'):
-                    # Parse date/time
-                    dt_str = line.split(':', 1)[1].strip()
-                    if 'T' in dt_str:
-                        # DateTime format
-                        try:
-                            dt = datetime.strptime(dt_str, '%Y%m%dT%H%M%SZ')
-                            current_event['start'] = dt
-                        except:
-                            pass
-                    else:
-                        # Date format
-                        try:
-                            dt = datetime.strptime(dt_str, '%Y%m%d')
-                            current_event['start'] = dt
-                        except:
-                            pass
-                elif line.startswith('DTEND:'):
-                    dt_str = line.split(':', 1)[1].strip()
-                    if 'T' in dt_str:
-                        try:
-                            dt = datetime.strptime(dt_str, '%Y%m%dT%H%M%SZ')
-                            current_event['end'] = dt
-                        except:
-                            pass
-                    else:
-                        try:
-                            dt = datetime.strptime(dt_str, '%Y%m%d')
-                            current_event['end'] = dt
-                        except:
-                            pass
-        
-        # Filter for today's events
-        today = datetime.now().date()
-        today_events = []
-        for event in events:
-            if 'start' in event:
-                start_date = event['start'].date() if isinstance(event['start'], datetime) else event['start']
-                if start_date == today:
-                    today_events.append(event)
-        
-        # Sort by start time
-        today_events.sort(key=lambda x: x.get('start', datetime.min))
-        
-        # Extract just the summaries
-        return [e.get('summary', 'Untitled Event') for e in today_events]
-    except Exception as e:
-        print(f"Error parsing iCalendar: {e}")
-        return []
-
-
-def fetch_webdav_calendar(url, username, password):
-    """Fetch calendar from WebDAV server."""
-    try:
-        response = requests.get(
-            url,
-            auth=HTTPBasicAuth(username, password),
-            timeout=10
+        # Create CalDAV client
+        client = caldav.DAVClient(
+            url=config.get('caldav_url', ''),
+            username=config.get('caldav_username', ''),
+            password=config.get('caldav_password', '')
         )
-        if response.status_code == 200:
-            return response.text
-        else:
-            print(f"WebDAV request failed: {response.status_code}")
-            return None
+        
+        # Get principal (user)
+        principal = client.principal()
+        
+        # Get calendars
+        calendars = principal.calendars()
+        if not calendars:
+            print("No calendars found")
+            return []
+        
+        # Use first calendar
+        calendar = calendars[0]
+        
+        # Get today's date range
+        today = datetime.now().date()
+        start = datetime.combine(today, datetime.min.time())
+        end = datetime.combine(today, datetime.max.time())
+        
+        # Search for events today
+        events = calendar.search(
+            start=start,
+            end=end,
+            event=True
+        )
+        
+        # Extract event summaries
+        event_summaries = []
+        for event in events:
+            summary = str(event.vobject_instance.vevent.summary.value)
+            event_summaries.append(summary)
+        
+        return event_summaries
+        
     except Exception as e:
-        print(f"Error fetching WebDAV: {e}")
-        return None
-
-
-def get_calendar_text(config):
-    """Get today's calendar entries as formatted text."""
-    if not config or not config.get('webdav_enabled'):
-        return None
-    
-    ical_content = fetch_webdav_calendar(
-        config.get('webdav_url', ''),
-        config.get('webdav_username', ''),
-        config.get('webdav_password', '')
-    )
-    
-    if ical_content:
-        events = parse_icalendar(ical_content)
-        if events:
-            return "\n".join(events)
-    
-    return None
+        print(f"Error fetching CalDAV: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 @app.route('/')
@@ -242,12 +185,12 @@ def index():
 
 @app.route('/save_config', methods=['POST'])
 def save_config():
-    """Save WebDAV configuration."""
+    """Save CalDAV configuration."""
     config = {
-        'webdav_enabled': request.form.get('webdav_enabled') == 'on',
-        'webdav_url': request.form.get('webdav_url', ''),
-        'webdav_username': request.form.get('webdav_username', ''),
-        'webdav_password': request.form.get('webdav_password', '')
+        'caldav_enabled': request.form.get('caldav_enabled') == 'on',
+        'caldav_url': request.form.get('caldav_url', ''),
+        'caldav_username': request.form.get('caldav_username', ''),
+        'caldav_password': request.form.get('caldav_password', '')
     }
     
     try:
@@ -280,15 +223,17 @@ def display_calendar():
     except:
         config = {}
     
-    calendar_text = get_calendar_text(config)
+    events = get_calendar_events(config)
     
-    if calendar_text:
-        # Store in session and redirect to print
+    if events:
+        # Format events for display
+        calendar_text = "\n".join(events)
+        # Store in session and display
         session['last_message'] = calendar_text
         return print_message()
     else:
         return render_template('index.html', 
-                             printed_message="No calendar entries found or WebDAV not configured",
+                             printed_message="No calendar entries found or CalDAV not configured",
                              font_sizes=FONT_SIZES,
                              default_font='medium',
                              last_message=session.get('last_message', ''),
