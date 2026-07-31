@@ -216,8 +216,7 @@
         <form action="/print" method="POST" id="displayForm">
             <div class="form-group">
                 <label for="message">Your Message:</label>
-                <textarea id="message" name="message" placeholder="Enter text to display..." required>Hello World
-This is a test of the e-paper display with automatic line wrapping.</textarea>
+                <textarea id="message" name="message" placeholder="Enter text to display..." required>{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display with automatic line wrapping." }}</textarea>
             </div>
             
             <div class="form-group font-selector">
@@ -272,21 +271,21 @@ This is a test of the e-paper display with automatic line wrapping.</textarea>
     </div>
     
     <script>
-        // Get the selected font size's limits
+        // Get the selected font size's limits - adjusted to match actual display
         function getCurrentLimits() {
             const select = document.getElementById('font_size');
             const fontKey = select.value;
             
-            // Hardcoded limits for our two font sizes
+            // Adjusted to match actual wrapping behavior on e-paper
             const limits = {
-                'medium': { maxCharsPerLine: 40, maxLines: 8 },
-                'xlarge': { maxCharsPerLine: 22, maxLines: 3 }
+                'medium': { maxCharsPerLine: 25, maxLines: 8 },  // ~25 chars fits on medium
+                'xlarge': { maxCharsPerLine: 14, maxLines: 3 }   // ~14 chars fits on xlarge
             };
             
-            return limits[fontKey] || { maxCharsPerLine: 40, maxLines: 8 };
+            return limits[fontKey] || { maxCharsPerLine: 25, maxLines: 8 };
         }
         
-        // Wrap text for preview
+        // Wrap text for preview - matches server-side wrapping
         function wrapTextForPreview(text, maxCharsPerLine) {
             const lines = text.split('\n');
             const wrappedLines = [];
@@ -297,6 +296,7 @@ This is a test of the e-paper display with automatic line wrapping.</textarea>
                 
                 let currentLine = trimmed;
                 while (currentLine.length > maxCharsPerLine) {
+                    // Find the last space before maxCharsPerLine
                     let splitPos = currentLine.substring(0, maxCharsPerLine).lastIndexOf(' ');
                     if (splitPos <= 0) {
                         splitPos = maxCharsPerLine;

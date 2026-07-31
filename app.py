@@ -2,9 +2,10 @@ import sys
 import os
 import time
 from PIL import Image, ImageDraw, ImageFont
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session
 
 app = Flask(__name__)
+app.secret_key = 'e-paper-display-secret-key-12345'
 
 # Available font sizes for the e-paper display (only Medium and XLarge)
 FONT_SIZES = {
@@ -36,11 +37,10 @@ def get_font(size_key, fallback_size=18):
 
 
 def get_max_chars_per_line(font_size_key):
-    """Calculate maximum characters that fit in one line - doubled for less wrapping."""
+    """Calculate maximum characters that fit in one line."""
     char_width = CHAR_WIDTHS.get(font_size_key, 10)
     # Leave margin: 10px left + 10px right = 20px total
-    # Doubled the available width for less aggressive wrapping
-    return max(1, (DISPLAY_WIDTH - 20) // char_width * 2)
+    return max(1, (DISPLAY_WIDTH - 20) // char_width)
 
 
 def get_max_lines(font_size_key):
@@ -79,10 +79,13 @@ def wrap_text(text, max_chars_per_line):
 def index():
     """Render the main page with the form."""
     default_font = 'medium'
+    # Get last message from session if available
+    last_message = session.get('last_message', 'Hello World\nThis is a test of the e-paper display with automatic line wrapping.')
     return render_template('index.html', 
                          printed_message=None,
                          font_sizes=FONT_SIZES,
                          default_font=default_font,
+                         last_message=last_message,
                          max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},
                          max_lines={k: get_max_lines(k) for k in FONT_SIZES})
 
@@ -173,6 +176,9 @@ def print_message():
     message = request.form.get('message', 'Hello World')
     font_size = request.form.get('font_size', 'medium')
     
+    # Store the message in session for next page load
+    session['last_message'] = message
+    
     print(f"Printing: {message}")
     print(f"Font size: {font_size}")
     
@@ -193,6 +199,7 @@ def print_message():
                          printed_message=success_message,
                          font_sizes=FONT_SIZES,
                          default_font=font_size,
+                         last_message=message,
                          max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},
                          max_lines={k: get_max_lines(k) for k in FONT_SIZES})
 
