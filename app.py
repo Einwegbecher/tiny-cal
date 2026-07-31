@@ -5,23 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 from flask import Flask, render_template, request
 
 app = Flask(__name__)
-
-# Try to import the waveshare e-paper library
-try:
-    from lib.waveshare_epd import epd2in15g
-    EPD_AVAILABLE = True
-except ImportError:
-    EPD_AVAILABLE = False
-    print("Warning: Waveshare e-paper library not available")
-
-
-@app.route('/')
-def index():
-    """Render the main page with the form."""
-    return render_template('index.html', printed_message=None)
-
-
-def display_on_epaper(message):
+def dumm():
     from lib.waveshare_epd import epd2in15g 
 
     try:
@@ -74,7 +58,7 @@ def display_on_epaper(message):
         #draw2.text((30, 60), "Keep Winning!" , font=system_font, fill=0)
 
         #img = Image.open('bild.png')
-        #img_processed = img.resize((epd.width, epd.height)).convert('1')
+        #img_processed = img.resize((epd-width, epd.height)).convert('1')
         #epd.display(epd.getbuffer(img_processed))
         # Rotate the canvas 90 degrees
         #rotated_canvas2 = canvas2.rotate(90, expand=True)
@@ -88,6 +72,19 @@ def display_on_epaper(message):
         print("Finalizing updates. Putting display to sleep...")
         epd.sleep()
         print("Finished successfully!")
+
+    except Exception as e:
+        print(f"Error encountered: {e}")
+
+
+@app.route('/')
+def index():
+    """Render the main page with the form."""
+    return render_template('index.html', printed_message=None)
+
+
+def display_on_epaper(message):
+    print("hi")
 
 
 @app.route('/print', methods=['POST'])
