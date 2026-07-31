@@ -5,97 +5,92 @@ from PIL import Image, ImageDraw, ImageFont
 from flask import Flask, render_template, request
 
 app = Flask(__name__)
+def dumm():
+    from lib.waveshare_epd import epd2in15g 
 
-# Global flag for EPD availability
-EPD_MODULE = None
-EPD_AVAILABLE = False
-
-
-def cleanup_and_load_epd():
-    """
-    Clean up GPIO and load the Waveshare e-paper library.
-    This is called lazily only when display_on_epaper is first invoked.
-    """
-    global EPD_MODULE, EPD_AVAILABLE
-    
-    if EPD_AVAILABLE:
-        return True
-    
-    # Clean up GPIO first
     try:
-        import gpiozero
-        print("Cleaning up GPIO devices...")
+        epd = epd2in15g.EPD()
+        epd.init()
+        epd.Clear()
+
+        # Load system font with safety fallback
         try:
-            gpiozero.Device.shutdown_all()
-            print("GPIO cleanup completed")
-        except Exception as e:
-            print(f"Warning during GPIO cleanup: {e}")
-        time.sleep(0.5)
-    except ImportError:
-        print("Warning: gpiozero not available, cannot clean up GPIO")
-    
-    # Now try to import the waveshare library
-    try:
-        from lib.waveshare_epd import epd2in15g
-        EPD_MODULE = epd2in15g
-        EPD_AVAILABLE = True
-        print("Waveshare epd2in15g library loaded successfully")
-        return True
-    except ImportError:
-        pass
-    
-    try:
-        from waveshare_epd import epd2in15g
-        EPD_MODULE = epd2in15g
-        EPD_AVAILABLE = True
-        print("Waveshare epd2in15g library loaded successfully")
-        return True
-    except ImportError:
-        pass
-    
-    try:
-        sys.path.append('/usr/local/lib/python3/dist-packages')
-        from lib.waveshare_epd import epd2in15g
-        EPD_MODULE = epd2in15g
-        EPD_AVAILABLE = True
-        print("Waveshare epd2in15g library loaded successfully")
-        return True
-    except ImportError:
-        print("Warning: Waveshare e-paper library not available. Display functionality disabled.")
-        print("Please install: pip install waveshare-epd or ensure lib/waveshare_epd is in your PYTHONPATH")
-        return False
+            system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
+        except OSError:
+            system_font = ImageFont.load_default()
 
+        # ==========================================
+        # STEP 1: RENDER AND DISPLAY FIRST TEXT
+        # ==========================================
+        print("Preparing Frame 1...")
+        
+        # Create canvas with REVERSED dimensions (Height x Width) for portrait design
+        canvas1 = Image.new('1', (epd.height, epd.width), 255)
+        draw1 = ImageDraw.Draw(canvas1)
+        draw1.text((10, 30), "Du Penis", font=system_font, fill=0)     # Draw text onto the portrait canvas
+        rotated_canvas1 = canvas1.rotate(90, expand=True) # Rotate the canvas 90 degrees to fit the landscape hardware screen
+        print("Refreshing Screen (Blinking will take ~20 seconds)...")
+        epd.display(epd.getbuffer(rotated_canvas1))
+        print("Frame 1 Complete.")
+
+        print("Waiting 25 seconds...")
+        time.sleep(25)
+        print("Preparing Frame 2...")
+        canvas2 = Image.new('1', (epd.height, epd.width), 255)
+        draw2 = ImageDraw.Draw(canvas2)
+        lines = [
+            "Keep going,",
+            "Keep Working",
+            "You got this!",
+            "Stay strong!"
+        ]
+        
+        y_position = 30
+        for line in lines:
+            draw2.text((10, y_position), line, font=system_font, fill=0)
+            y_position += 20  # Increment y for the next line (adjust spacing as needed)
+
+        rotated_canvas2 = canvas2.rotate(90, expand=True)
+        print("Refreshing Screen (Blinking will take ~20 seconds)...")
+        epd.display(epd.getbuffer(rotated_canvas2))
+        # Draw new text
+        
+        #draw2.text((30, 60), "Keep Winning!" , font=system_font, fill=0)
+
+        #img = Image.open('bild.png')
+        #img_processed = img.resize((epd-width, epd.height)).convert('1')
+        #epd.display(epd.getbuffer(img_processed))
+        # Rotate the canvas 90 degrees
+        #rotated_canvas2 = canvas2.rotate(90, expand=True)
+
+        #print("Refreshing Screen Again...")
+        #epd.display(epd.getbuffer(rotated_canvas2))
+        
+        # ==========================================
+        # STEP 4: SAFE DISCONNECT
+        # ==========================================
+        print("Finalizing updates. Putting display to sleep...")
+        epd.sleep()
+        print("Finished successfully!")
+
+    except Exception as e:
+        print(f"Error encountered: {e}")
 
 @app.route('/')
 def index():
     """Render the main page with the form."""
     return render_template('index.html', printed_message=None)
 
-
 def display_on_epaper(message):
-    """
-    Display a message on the Waveshare e-paper display.
-    Uses the same approach as quick_test.py: creates canvas with reversed dimensions
-    (height x width) for portrait design, then rotates 90 degrees for landscape display.
-    """
-    # Lazy load the EPD library on first use
-    if not cleanup_and_load_epd():
-        print("E-paper display not available - library not imported")
-        return False
-    
+    from lib.waveshare_epd import epd2in15g 
+
     try:
-        print(f"Attempting to display: '{message}'")
-        
-        # Initialize the e-paper display
-        epd = EPD_MODULE.EPD()
-        print("EPD object created")
-        
+        epd = epd2in15g.EPD()
         epd.init()
         print("EPD initialized")
         
         epd.Clear()
-        print("EPD cleared")
-        
+
         # Load system font with safety fallback
         try:
             system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
@@ -103,36 +98,20 @@ def display_on_epaper(message):
             system_font = ImageFont.load_default()
             print("Using default font")
         
-        # Create canvas with REVERSED dimensions (Height x Width) for portrait design
-        # This matches the approach in quick_test.py
-        print(f"Creating canvas for e-paper (height: {epd.height}, width: {epd.width})")
         canvas = Image.new('1', (epd.height, epd.width), 255)
         draw = ImageDraw.Draw(canvas)
-        
-        # Draw the message on the portrait canvas
-        draw.text((10, 30), message, font=system_font, fill=0)
-        print("Text drawn on canvas")
-        
-        # Rotate the canvas 90 degrees to fit the landscape hardware screen
-        rotated_canvas = canvas.rotate(90, expand=True)
-        print("Canvas rotated")
-        
-        # Display the rotated image
-        print("Displaying message on e-paper (this may take ~20 seconds)...")
+        draw.text((10, 30), (message), font=system_font, fill=0)     # Draw text onto the portrait canvas
+        rotated_canvas = canvas.rotate(90, expand=True) # Rotate the canvas 90 degrees to fit the landscape hardware screen
+        print("Refreshing Screen (Blinking will take ~20 seconds)...")
         epd.display(epd.getbuffer(rotated_canvas))
-        print("Message displayed successfully on e-paper!")
-        
-        # Put the display to sleep to save power
+        print("Frame 1 Complete.")
+
+        print("Finalizing updates. Putting display to sleep...")
         epd.sleep()
-        print("EPD put to sleep")
-        return True
-        
+        print("Finished successfully!")
+
     except Exception as e:
-        import traceback
-        print(f"Error displaying on e-paper: {e}")
-        print("Full traceback:")
-        traceback.print_exc()
-        return False
+        print(f"Error encountered: {e}")
 
 
 @app.route('/print', methods=['POST'])
@@ -144,10 +123,7 @@ def print_message():
     # Get the message from the form
     message = request.form.get('message', 'Hello World')
     
-    # Print to CLI
     print(f"Printed: {message}")
-    
-    # Display on e-paper
     display_on_epaper(message)
     
     # Render the template with success message
