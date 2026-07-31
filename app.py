@@ -24,7 +24,8 @@ def index():
 def display_on_epaper(message):
     """
     Display a message on the Waveshare e-paper display.
-    Handles the display initialization, text rendering, and cleanup.
+    Uses the same approach as quick_test.py: creates canvas with reversed dimensions
+    (height x width) for portrait design, then rotates 90 degrees for landscape display.
     """
     if not EPD_AVAILABLE:
         print("E-paper display not available")
@@ -42,21 +43,25 @@ def display_on_epaper(message):
         except OSError:
             system_font = ImageFont.load_default()
         
-        # Create canvas - note: epd2in15g is 200x200 pixels
-        print(f"Creating canvas for e-paper (width: {epd.width}, height: {epd.height})")
-        canvas = Image.new('1', (epd.width, epd.height), 255)  # '1' mode for 1-bit image
+        # Create canvas with REVERSED dimensions (Height x Width) for portrait design
+        # This matches the approach in quick_test.py
+        print(f"Creating canvas for e-paper (height: {epd.height}, width: {epd.width})")
+        canvas = Image.new('1', (epd.height, epd.width), 255)
         draw = ImageDraw.Draw(canvas)
         
-        # Draw the message on the canvas
+        # Draw the message on the portrait canvas
         draw.text((10, 30), message, font=system_font, fill=0)
         
-        # Display the image
-        print("Displaying message on e-paper...")
-        epd.display(epd.getbuffer(canvas))
+        # Rotate the canvas 90 degrees to fit the landscape hardware screen
+        rotated_canvas = canvas.rotate(90, expand=True)
+        
+        # Display the rotated image
+        print("Displaying message on e-paper (this may take ~20 seconds)...")
+        epd.display(epd.getbuffer(rotated_canvas))
+        print("Message displayed successfully on e-paper!")
         
         # Put the display to sleep to save power
         epd.sleep()
-        print("Message displayed successfully on e-paper!")
         return True
         
     except Exception as e:
