@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Print Message App</title>
+    <title>E-Paper Display App</title>
     <style>
         * {
             margin: 0;
@@ -33,7 +33,7 @@
         
         h1 {
             color: #333;
-            margin-bottom: 30px;
+            margin-bottom: 10px;
             font-size: 28px;
             font-weight: 600;
         }
@@ -58,7 +58,7 @@
             font-weight: 500;
         }
         
-        input[type="text"] {
+        textarea, input[type="text"] {
             width: 100%;
             padding: 14px 16px;
             border: 2px solid #e1e5e9;
@@ -66,9 +66,12 @@
             font-size: 16px;
             transition: border-color 0.3s ease;
             outline: none;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 100px;
         }
         
-        input[type="text"]:focus {
+        textarea:focus, input[type="text"]:focus {
             border-color: #667eea;
         }
         
@@ -122,29 +125,61 @@
             }
         }
         
-
+        .tips {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #004085;
+            border-left: 4px solid #2196F3;
+            text-align: left;
+        }
+        
+        .tips h4 {
+            margin-bottom: 8px;
+            color: #0066cc;
+        }
+        
+        .tips ul {
+            margin-left: 20px;
+        }
+        
+        .tips li {
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Print Message to CLI</h1>
-        <p class="description">Enter a message below and click the button to print it to the console.</p>
+        <h1>E-Paper Display</h1>
+        <p class="description">Enter text below (one line per line) and click the button to display it on the e-paper screen.</p>
         
         <form action="/print" method="POST">
             <div class="form-group">
-                <label for="message">Your Message:</label>
-                <input type="text" id="message" name="message" placeholder="Enter text to print..." value="Hello World" required>
+                <label for="message">Your Message (multiple lines supported):</label>
+                <textarea id="message" name="message" placeholder="Enter text to display...&#10;Line 1&#10;Line 2&#10;Line 3" required>Hello World
+Keep going
+You got this!</textarea>
             </div>
-            <button type="submit">Print to Console</button>
+            <button type="submit">Display on E-Paper</button>
         </form>
         
         {% if printed_message %}
         <div class="message success">
-            ✓ Printed: "{{ printed_message }}"
+            ✓ Displayed message on e-paper
         </div>
         {% endif %}
         
-
+        <div class="tips">
+            <h4>Tips:</h4>
+            <ul>
+                <li>Enter multiple lines by pressing Enter</li>
+                <li>Or separate lines with commas (,)</li>
+                <li>Display may take ~20 seconds to refresh</li>
+                <li>Max ~6-8 lines fit on the 2.15" display</li>
+            </ul>
+        </div>
     </div>
 </body>
 </html>

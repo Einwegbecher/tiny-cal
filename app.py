@@ -5,83 +5,21 @@ from PIL import Image, ImageDraw, ImageFont
 from flask import Flask, render_template, request
 
 app = Flask(__name__)
-def dumm():
-    from lib.waveshare_epd import epd2in15g 
 
-    try:
-        epd = epd2in15g.EPD()
-        epd.init()
-        epd.Clear()
-
-        # Load system font with safety fallback
-        try:
-            system_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
-        except OSError:
-            system_font = ImageFont.load_default()
-
-        # ==========================================
-        # STEP 1: RENDER AND DISPLAY FIRST TEXT
-        # ==========================================
-        print("Preparing Frame 1...")
-        
-        # Create canvas with REVERSED dimensions (Height x Width) for portrait design
-        canvas1 = Image.new('1', (epd.height, epd.width), 255)
-        draw1 = ImageDraw.Draw(canvas1)
-        draw1.text((10, 30), "Du Penis", font=system_font, fill=0)     # Draw text onto the portrait canvas
-        rotated_canvas1 = canvas1.rotate(90, expand=True) # Rotate the canvas 90 degrees to fit the landscape hardware screen
-        print("Refreshing Screen (Blinking will take ~20 seconds)...")
-        epd.display(epd.getbuffer(rotated_canvas1))
-        print("Frame 1 Complete.")
-
-        print("Waiting 25 seconds...")
-        time.sleep(25)
-        print("Preparing Frame 2...")
-        canvas2 = Image.new('1', (epd.height, epd.width), 255)
-        draw2 = ImageDraw.Draw(canvas2)
-        lines = [
-            "Keep going,",
-            "Keep Working",
-            "You got this!",
-            "Stay strong!"
-        ]
-        
-        y_position = 30
-        for line in lines:
-            draw2.text((10, y_position), line, font=system_font, fill=0)
-            y_position += 20  # Increment y for the next line (adjust spacing as needed)
-
-        rotated_canvas2 = canvas2.rotate(90, expand=True)
-        print("Refreshing Screen (Blinking will take ~20 seconds)...")
-        epd.display(epd.getbuffer(rotated_canvas2))
-        # Draw new text
-        
-        #draw2.text((30, 60), "Keep Winning!" , font=system_font, fill=0)
-
-        #img = Image.open('bild.png')
-        #img_processed = img.resize((epd-width, epd.height)).convert('1')
-        #epd.display(epd.getbuffer(img_processed))
-        # Rotate the canvas 90 degrees
-        #rotated_canvas2 = canvas2.rotate(90, expand=True)
-
-        #print("Refreshing Screen Again...")
-        #epd.display(epd.getbuffer(rotated_canvas2))
-        
-        # ==========================================
-        # STEP 4: SAFE DISCONNECT
-        # ==========================================
-        print("Finalizing updates. Putting display to sleep...")
-        epd.sleep()
-        print("Finished successfully!")
-
-    except Exception as e:
-        print(f"Error encountered: {e}")
 
 @app.route('/')
 def index():
     """Render the main page with the form."""
     return render_template('index.html', printed_message=None)
 
+
 def display_on_epaper(message):
+    """
+    Display a message on the Waveshare e-paper display.
+    Supports multi-line text with automatic line wrapping.
+    Uses the same approach as quick_test.py: creates canvas with reversed dimensions
+    (height x width) for portrait design, then rotates 90 degrees for landscape display.
+    """
     from lib.waveshare_epd import epd2in15g 
 
     try:
@@ -98,13 +36,35 @@ def display_on_epaper(message):
             system_font = ImageFont.load_default()
             print("Using default font")
         
+        # Split message into lines (supports both newline-separated and comma-separated)
+        lines = message.replace(',', '\n').split('\n')
+        lines = [line.strip() for line in lines if line.strip()]
+        
+        # If no lines or empty, use default
+        if not lines:
+            lines = ["Hello World"]
+        
+        # Create canvas with REVERSED dimensions (Height x Width) for portrait design
         canvas = Image.new('1', (epd.height, epd.width), 255)
         draw = ImageDraw.Draw(canvas)
-        draw.text((10, 30), (message), font=system_font, fill=0)     # Draw text onto the portrait canvas
-        rotated_canvas = canvas.rotate(90, expand=True) # Rotate the canvas 90 degrees to fit the landscape hardware screen
+        
+        # Draw each line on the portrait canvas
+        y_position = 30
+        line_height = 25  # Space between lines
+        
+        for line in lines:
+            draw.text((10, y_position), line, font=system_font, fill=0)
+            y_position += line_height
+            # Stop if we're running out of vertical space
+            if y_position > epd.width - 30:
+                print(f"Warning: Not enough space for all lines. Displaying first {lines.index(line) + 1} lines.")
+                break
+        
+        # Rotate the canvas 90 degrees to fit the landscape hardware screen
+        rotated_canvas = canvas.rotate(90, expand=True)
         print("Refreshing Screen (Blinking will take ~20 seconds)...")
         epd.display(epd.getbuffer(rotated_canvas))
-        print("Frame 1 Complete.")
+        print("Frame displayed.")
 
         print("Finalizing updates. Putting display to sleep...")
         epd.sleep()
