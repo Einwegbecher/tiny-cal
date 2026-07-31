@@ -75,6 +75,14 @@
             border-color: #667eea;
         }
         
+        textarea.warning {
+            border-color: #ffc107;
+        }
+        
+        textarea.error {
+            border-color: #dc3545;
+        }
+        
         select {
             width: 100%;
             padding: 14px 16px;
@@ -114,6 +122,13 @@
             transform: translateY(0);
         }
         
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
         .message {
             margin-top: 25px;
             padding: 15px;
@@ -127,6 +142,13 @@
             background: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
             display: block;
         }
         
@@ -171,6 +193,8 @@
             margin-top: 10px;
             font-size: 12px;
             color: #888;
+            flex-wrap: wrap;
+            gap: 5px;
         }
         
         .font-option {
@@ -179,6 +203,21 @@
             border-radius: 4px;
             font-size: 12px;
         }
+        
+        .char-counter {
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .char-counter.warning {
+            color: #ffc107;
+        }
+        
+        .char-counter.error {
+            color: #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -186,19 +225,27 @@
         <h1>E-Paper Display</h1>
         <p class="description">Enter text below and select font size, then click to display on e-paper.</p>
         
-        <form action="/print" method="POST">
+        <form action="/print" method="POST" id="displayForm">
             <div class="form-group">
                 <label for="message">Your Message (multiple lines supported):</label>
-                <textarea id="message" name="message" placeholder="Enter text to display...&#10;Line 1&#10;Line 2&#10;Line 3" required>Hello World
+                <textarea id="message" name="message" placeholder="Enter text to display..." required oninput="updateCharCounter()">Hello World
 Keep going
 You got this!</textarea>
+                <div class="char-counter" id="charCounter">
+                    <span id="charCount">0</span> / <span id="maxChars">0</span> characters
+                </div>
             </div>
             
             <div class="form-group">
                 <label for="font_size">Font Size:</label>
-                <select id="font_size" name="font_size">
+                <select id="font_size" name="font_size" onchange="updateCharCounter()">
                     {% for size_key, size_value in font_sizes.items() %}
-                    <option value="{{ size_key }}" {% if size_key == default_font %}selected{% endif %}>{{ size_key|capitalize }} ({{ size_value }}px)</option>
+                    <option value="{{ size_key }}" {% if size_key == default_font %}selected{% endif %} 
+                            data-max-chars="{{ max_total_chars[size_key] }}"
+                            data-max-lines="{{ max_lines[size_key] }}"
+                            data-chars-per-line="{{ max_chars_per_line[size_key] }}">
+                        {{ size_key|capitalize }} ({{ size_value }}px) - ~{{ max_lines[size_key] }} lines max
+                    </option>
                     {% endfor %}
                 </select>
                 <div class="font-preview">
@@ -208,7 +255,7 @@ You got this!</textarea>
                 </div>
             </div>
             
-            <button type="submit">Display on E-Paper</button>
+            <button type="submit" id="submitBtn">Display on E-Paper</button>
         </form>
         
         {% if printed_message %}
@@ -223,10 +270,58 @@ You got this!</textarea>
                 <li>Enter multiple lines by pressing Enter</li>
                 <li>Or separate lines with commas (,)</li>
                 <li>Display may take ~20 seconds to refresh</li>
-                <li>Larger fonts = fewer lines fit on screen</li>
-                <li>Small: ~10 lines, Medium: ~6-8 lines, Large: ~4-5 lines, XLarge: ~2-3 lines</li>
+                <li>Text that exceeds display limits will be truncated with "..."</li>
+                <li>Character counter helps you stay within limits</li>
             </ul>
         </div>
     </div>
+    
+    <script>
+        // Get the selected font size's limits
+        function getCurrentLimits() {
+            const select = document.getElementById('font_size');
+            const selectedOption = select.options[select.selectedIndex];
+            return {
+                maxChars: parseInt(selectedOption.dataset.maxChars) || 200,
+                maxLines: parseInt(selectedOption.dataset.maxLines) || 8,
+                charsPerLine: parseInt(selectedOption.dataset.charsPerLine) || 20
+            };
+        }
+        
+        // Update character counter
+        function updateCharCounter() {
+            const textarea = document.getElementById('message');
+            const counter = document.getElementById('charCounter');
+            const charCount = document.getElementById('charCount');
+            const maxCharsSpan = document.getElementById('maxChars');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            const limits = getCurrentLimits();
+            const text = textarea.value;
+            const charCountValue = text.length;
+            const maxChars = limits.maxChars;
+            
+            charCount.textContent = charCountValue;
+            maxCharsSpan.textContent = maxChars;
+            
+            // Update counter color based on usage
+            counter.className = 'char-counter';
+            if (charCountValue > maxChars * 0.8) {
+                counter.classList.add('warning');
+            }
+            if (charCountValue > maxChars) {
+                counter.classList.remove('warning');
+                counter.classList.add('error');
+            }
+            
+            // Optionally disable submit button if over limit
+            // submitBtn.disabled = charCountValue > maxChars;
+        }
+        
+        // Initialize counter on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCharCounter();
+        });
+    </script>
 </body>
 </html>
