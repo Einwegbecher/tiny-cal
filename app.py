@@ -13,15 +13,9 @@ FONT_SIZES = {
     'xlarge': 30
 }
 
-# Character width estimates for each font size
-CHAR_WIDTHS = {
-    'medium': 10,   # ~10px per char at 18px font
-    'xlarge': 18    # ~18px per char at 30px font
-}
-
-# Display dimensions after rotation (200x200)
-DISPLAY_WIDTH = 200
-DISPLAY_HEIGHT = 200
+# Actual display resolution (296x160) - this is the CORRECT resolution
+DISPLAY_WIDTH = 296
+DISPLAY_HEIGHT = 160
 
 
 def get_font(size_key, fallback_size=18):
@@ -36,42 +30,64 @@ def get_font(size_key, fallback_size=18):
             return ImageFont.load_default()
 
 
-def get_max_chars_per_line(font_size_key):
-    """Calculate maximum characters that fit in one line."""
-    char_width = CHAR_WIDTHS.get(font_size_key, 10)
-    # Leave margin: 10px left + 10px right = 20px total
-    return max(1, (DISPLAY_WIDTH - 20) // char_width)
+def get_text_width(text, font):
+    """Calculate the actual pixel width of text using the given font."""
+    # Create a temporary image to measure text
+    temp_img = Image.new('RGB', (1, 1))
+    temp_draw = ImageDraw.Draw(temp_img)
+    # Use textbbox to get the bounding box (left, top, right, bottom)
+    bbox = temp_draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0]  # right - left = width
 
 
-def get_max_lines(font_size_key):
-    """Calculate maximum lines that fit on the display."""
-    font_size = FONT_SIZES.get(font_size_key, 18)
-    line_height = font_size + 2  # Reduced padding for tighter spacing
-    # Leave margin: 15px top + 15px bottom = 30px total
-    return max(1, (DISPLAY_HEIGHT - 30) // line_height)
+def get_text_height(font):
+    """Calculate the actual pixel height of text using the given font."""
+    temp_img = Image.new('RGB', (1, 1))
+    temp_draw = ImageDraw.Draw(temp_img)
+    bbox = temp_draw.textbbox((0, 0), "Ag", font=font)  # Use 'Ag' to get ascender + descender
+    return bbox[3] - bbox[1]  # bottom - top = height
 
 
-def wrap_text(text, max_chars_per_line):
+def wrap_text_dynamically(text, font, max_width):
     """
-    Wrap text to multiple lines if it exceeds max_chars_per_line.
+    Wrap text to multiple lines based on actual pixel measurements.
     Preserves existing newlines and wraps long lines at word boundaries.
     """
     lines = []
+    current_line = ""
+    
     # Split by existing newlines first
     for paragraph in text.split('\n'):
         paragraph = paragraph.strip()
         if not paragraph:
+            if current_line:
+                lines.append(current_line)
+                current_line = ""
             continue
-        # Split long lines into chunks
-        while len(paragraph) > max_chars_per_line:
-            # Find the last space before max_chars_per_line to avoid breaking words
-            split_pos = paragraph[:max_chars_per_line].rfind(' ')
-            if split_pos <= 0:  # No space found, force break
-                split_pos = max_chars_per_line
-            lines.append(paragraph[:split_pos])
-            paragraph = paragraph[split_pos:].lstrip()
-        if paragraph:
-            lines.append(paragraph)
+            
+        # Process each word
+        for word in paragraph.split():
+            # Check if adding this word would exceed max_width
+            test_line = current_line + (' ' + word if current_line else word)
+            test_width = get_text_width(test_line, font)
+            
+            if test_width <= max_width:
+                current_line = test_line
+            else:
+                # Word doesn't fit, start new line
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+        
+        # Don't forget the last line of the paragraph
+        if current_line:
+            lines.append(current_line)
+            current_line = ""
+    
+    # Add any remaining text
+    if current_line:
+        lines.append(current_line)
+    
     return lines
 
 
@@ -80,22 +96,18 @@ def index():
     """Render the main page with the form."""
     default_font = 'medium'
     # Get last message from session if available
-    last_message = session.get('last_message', 'Hello World\nThis is a test of the e-paper display with automatic line wrapping.')
+    last_message = session.get('last_message', '')
     return render_template('index.html', 
                          printed_message=None,
                          font_sizes=FONT_SIZES,
                          default_font=default_font,
-                         last_message=last_message,
-                         max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},
-                         max_lines={k: get_max_lines(k) for k in FONT_SIZES})
+                         last_message=last_message)
 
 
 def display_on_epaper(message, font_size_key='medium'):
     """
     Display a message on the Waveshare e-paper display.
-    Supports multi-line text with automatic line wrapping and font size control.
-    Uses the same approach as quick_test.py: creates canvas with reversed dimensions
-    (height x width) for portrait design, then rotates 90 degrees for landscape display.
+    Uses dynamic pixel-based line wrapping for perfect fit.
     """
     from lib.waveshare_epd import epd2in15g 
 
@@ -111,44 +123,53 @@ def display_on_epaper(message, font_size_key='medium'):
         font_size = FONT_SIZES.get(font_size_key, 18)
         print(f"Using font size: {font_size}px")
         
-        # Calculate limits
-        max_chars_per_line = get_max_chars_per_line(font_size_key)
-        max_lines = get_max_lines(font_size_key)
+        # Get actual text measurements
+        text_height = get_text_height(system_font)
+        line_spacing = 2  # Small spacing between lines
+        total_line_height = text_height + line_spacing
         
-        # Split message into lines (supports both newline-separated and comma-separated)
-        raw_lines = message.replace(',', '\n').split('\n')
+        # Calculate available space (account for margins)
+        margin_left = 10
+        margin_right = 10
+        margin_top = 10
+        margin_bottom = 10
         
-        # Wrap each line to fit display width
-        wrapped_lines = []
-        for line in raw_lines:
-            line = line.strip()
-            if line:
-                wrapped_lines.extend(wrap_text(line, max_chars_per_line))
+        available_width = DISPLAY_WIDTH - margin_left - margin_right
+        available_height = DISPLAY_HEIGHT - margin_top - margin_bottom
+        
+        # Calculate max lines
+        max_lines = max(1, available_height // total_line_height)
+        
+        print(f"Available width: {available_width}px, height: {available_height}px")
+        print(f"Text height: {text_height}px, line height: {total_line_height}px")
+        print(f"Max lines: {max_lines}")
+        
+        # Wrap text based on actual pixel width
+        raw_text = message.replace(',', '\n')
+        wrapped_lines = wrap_text_dynamically(raw_text, system_font, available_width)
         
         # If no lines, use default
         if not wrapped_lines:
             wrapped_lines = ["Hello World"]
         
-        # Limit to max lines that fit on display - STOP here, no disappearing text
+        # Limit to max lines that fit on display
         display_lines = wrapped_lines[:max_lines]
         
         print(f"Displaying {len(display_lines)} lines (max {max_lines})")
         for i, line in enumerate(display_lines):
-            print(f"  Line {i+1}: {line}")
+            width = get_text_width(line, system_font)
+            print(f"  Line {i+1} ({width}px): {line}")
         
         # Create canvas with REVERSED dimensions (Height x Width) for portrait design
         canvas = Image.new('1', (epd.height, epd.width), 255)
         draw = ImageDraw.Draw(canvas)
         
-        # Calculate line height based on font size - tighter spacing
-        line_height = font_size + 2  # Reduced from 8 to 2 for tighter spacing
-        
-        # Draw each line on the portrait canvas - less top margin
-        y_position = 10  # Reduced from 20 to 10
+        # Draw each line on the portrait canvas
+        y_position = margin_top
         
         for line in display_lines:
-            draw.text((10, y_position), line, font=system_font, fill=0)
-            y_position += line_height
+            draw.text((margin_left, y_position), line, font=system_font, fill=0)
+            y_position += total_line_height
         
         # Rotate the canvas 90 degrees to fit the landscape hardware screen
         rotated_canvas = canvas.rotate(90, expand=True)
@@ -163,6 +184,8 @@ def display_on_epaper(message, font_size_key='medium'):
 
     except Exception as e:
         print(f"Error encountered: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -199,9 +222,7 @@ def print_message():
                          printed_message=success_message,
                          font_sizes=FONT_SIZES,
                          default_font=font_size,
-                         last_message=message,
-                         max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},
-                         max_lines={k: get_max_lines(k) for k in FONT_SIZES})
+                         last_message=message)
 
 
 if __name__ == '__main__':

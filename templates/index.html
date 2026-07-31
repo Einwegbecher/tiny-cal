@@ -58,7 +58,11 @@
             font-weight: 500;
         }
         
-        textarea {
+        .text-input-container {
+            position: relative;
+        }
+        
+        .text-input-with-preview {
             width: 100%;
             padding: 14px 16px;
             border: 2px solid #e1e5e9;
@@ -69,10 +73,28 @@
             font-family: inherit;
             resize: vertical;
             min-height: 120px;
+            line-height: 1.5;
+            white-space: pre-wrap;
         }
         
-        textarea:focus {
+        .text-input-with-preview:focus {
             border-color: #667eea;
+        }
+        
+        .preview-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            opacity: 0.3;
+            padding: 14px 16px;
+            white-space: pre-wrap;
+            line-height: 1.5;
+            overflow: hidden;
+            font-style: italic;
+            color: #999;
         }
         
         .font-selector {
@@ -178,34 +200,6 @@
         .tips li {
             margin-bottom: 5px;
         }
-        
-        .preview-section {
-            margin-top: 20px;
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            border-left: 3px solid #6c757d;
-        }
-        
-        .preview-section h4 {
-            color: #495057;
-            margin-bottom: 8px;
-            font-size: 13px;
-        }
-        
-        .preview-text {
-            font-family: monospace;
-            font-size: 13px;
-            color: #666;
-            white-space: pre-wrap;
-            background: white;
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #dee2e6;
-            text-align: left;
-            max-height: 100px;
-            overflow-y: auto;
-        }
     </style>
 </head>
 <body>
@@ -216,7 +210,11 @@
         <form action="/print" method="POST" id="displayForm">
             <div class="form-group">
                 <label for="message">Your Message:</label>
-                <textarea id="message" name="message" placeholder="Enter text to display..." required>{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display with automatic line wrapping." }}</textarea>
+                <div class="text-input-container">
+                    <textarea id="message" name="message" class="text-input-with-preview" 
+                              placeholder="Enter text to display..." required>{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display." }}</textarea>
+                    <div class="preview-overlay" id="previewOverlay"></div>
+                </div>
             </div>
             
             <div class="form-group font-selector">
@@ -228,11 +226,6 @@
                     </option>
                     {% endfor %}
                 </select>
-            </div>
-            
-            <div class="preview-section">
-                <h4>Preview:</h4>
-                <div class="preview-text" id="previewText"></div>
             </div>
             
             <button type="submit">Display on E-Paper</button>
@@ -261,31 +254,43 @@
         <div class="tips">
             <h4>Tips:</h4>
             <ul>
-                <li>Long lines will automatically wrap to fit the display</li>
+                <li>Text automatically wraps to fit the display width (296px)</li>
                 <li>Enter multiple lines by pressing Enter</li>
                 <li>Display may take ~20 seconds to refresh</li>
-                <li>Preview shows how your text will be wrapped</li>
+                <li>Preview overlay shows how text will wrap</li>
                 <li>Maximum lines: Medium=~8, XLarge=~3</li>
             </ul>
         </div>
     </div>
     
     <script>
-        // Get the selected font size's limits - adjusted to match actual display
+        // Character width estimates for preview (approximate for monospace display)
+        const CHAR_WIDTHS = {
+            'medium': 10,
+            'xlarge': 18
+        };
+        
+        const DISPLAY_WIDTH = 296;
+        const MARGINS = 20; // 10px left + 10px right
+        
         function getCurrentLimits() {
             const select = document.getElementById('font_size');
             const fontKey = select.value;
+            const charWidth = CHAR_WIDTHS[fontKey] || 10;
+            const maxCharsPerLine = Math.floor((DISPLAY_WIDTH - MARGINS) / charWidth);
             
-            // Adjusted to match actual wrapping behavior on e-paper
-            const limits = {
-                'medium': { maxCharsPerLine: 25, maxLines: 8 },  // ~25 chars fits on medium
-                'xlarge': { maxCharsPerLine: 14, maxLines: 3 }   // ~14 chars fits on xlarge
+            // Approximate line counts
+            const lineCounts = {
+                'medium': 8,
+                'xlarge': 3
             };
             
-            return limits[fontKey] || { maxCharsPerLine: 25, maxLines: 8 };
+            return {
+                maxCharsPerLine: maxCharsPerLine,
+                maxLines: lineCounts[fontKey] || 8
+            };
         }
         
-        // Wrap text for preview - matches server-side wrapping
         function wrapTextForPreview(text, maxCharsPerLine) {
             const lines = text.split('\n');
             const wrappedLines = [];
@@ -296,7 +301,6 @@
                 
                 let currentLine = trimmed;
                 while (currentLine.length > maxCharsPerLine) {
-                    // Find the last space before maxCharsPerLine
                     let splitPos = currentLine.substring(0, maxCharsPerLine).lastIndexOf(' ');
                     if (splitPos <= 0) {
                         splitPos = maxCharsPerLine;
@@ -312,10 +316,9 @@
             return wrappedLines;
         }
         
-        // Update preview
         function updatePreview() {
             const textarea = document.getElementById('message');
-            const preview = document.getElementById('previewText');
+            const preview = document.getElementById('previewOverlay');
             const limits = getCurrentLimits();
             
             const lines = wrapTextForPreview(textarea.value, limits.maxCharsPerLine);
