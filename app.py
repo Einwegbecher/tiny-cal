@@ -6,20 +6,16 @@ from flask import Flask, render_template, request
 
 app = Flask(__name__)
 
-# Available font sizes for the e-paper display
+# Available font sizes for the e-paper display (only Medium and XLarge)
 FONT_SIZES = {
-    'small': 12,
     'medium': 18,
-    'large': 24,
     'xlarge': 30
 }
 
-# Character width estimates for each font size (average width per character)
+# Character width estimates for each font size
 CHAR_WIDTHS = {
-    'small': 7,    # ~7px per char at 12px font
-    'medium': 10,  # ~10px per char at 18px font
-    'large': 14,   # ~14px per char at 24px font
-    'xlarge': 18   # ~18px per char at 30px font
+    'medium': 10,   # ~10px per char at 18px font
+    'xlarge': 18    # ~18px per char at 30px font
 }
 
 # Display dimensions after rotation (200x200)
@@ -27,7 +23,7 @@ DISPLAY_WIDTH = 200
 DISPLAY_HEIGHT = 200
 
 
-def get_font(size_key, fallback_size=20):
+def get_font(size_key, fallback_size=18):
     """Get the font object for the specified size."""
     size = FONT_SIZES.get(size_key, fallback_size)
     try:
@@ -40,24 +36,25 @@ def get_font(size_key, fallback_size=20):
 
 
 def get_max_chars_per_line(font_size_key):
-    """Calculate maximum characters that fit in one line."""
+    """Calculate maximum characters that fit in one line - doubled for less wrapping."""
     char_width = CHAR_WIDTHS.get(font_size_key, 10)
     # Leave margin: 10px left + 10px right = 20px total
-    return max(1, (DISPLAY_WIDTH - 20) // char_width)
+    # Doubled the available width for less aggressive wrapping
+    return max(1, (DISPLAY_WIDTH - 20) // char_width * 2)
 
 
 def get_max_lines(font_size_key):
     """Calculate maximum lines that fit on the display."""
-    font_size = FONT_SIZES.get(font_size_key, 20)
-    line_height = font_size + 8  # padding
-    # Leave margin: 20px top + 20px bottom = 40px total
-    return max(1, (DISPLAY_HEIGHT - 40) // line_height)
+    font_size = FONT_SIZES.get(font_size_key, 18)
+    line_height = font_size + 2  # Reduced padding for tighter spacing
+    # Leave margin: 15px top + 15px bottom = 30px total
+    return max(1, (DISPLAY_HEIGHT - 30) // line_height)
 
 
 def wrap_text(text, max_chars_per_line):
     """
     Wrap text to multiple lines if it exceeds max_chars_per_line.
-    Preserves existing newlines and wraps long lines.
+    Preserves existing newlines and wraps long lines at word boundaries.
     """
     lines = []
     # Split by existing newlines first
@@ -107,8 +104,8 @@ def display_on_epaper(message, font_size_key='medium'):
         epd.Clear()
 
         # Get font based on selected size
-        system_font = get_font(font_size_key, 20)
-        font_size = FONT_SIZES.get(font_size_key, 20)
+        system_font = get_font(font_size_key, 18)
+        font_size = FONT_SIZES.get(font_size_key, 18)
         print(f"Using font size: {font_size}px")
         
         # Calculate limits
@@ -129,7 +126,7 @@ def display_on_epaper(message, font_size_key='medium'):
         if not wrapped_lines:
             wrapped_lines = ["Hello World"]
         
-        # Limit to max lines that fit on display
+        # Limit to max lines that fit on display - STOP here, no disappearing text
         display_lines = wrapped_lines[:max_lines]
         
         print(f"Displaying {len(display_lines)} lines (max {max_lines})")
@@ -140,11 +137,11 @@ def display_on_epaper(message, font_size_key='medium'):
         canvas = Image.new('1', (epd.height, epd.width), 255)
         draw = ImageDraw.Draw(canvas)
         
-        # Calculate line height based on font size
-        line_height = font_size + 8  # Add some padding between lines
+        # Calculate line height based on font size - tighter spacing
+        line_height = font_size + 2  # Reduced from 8 to 2 for tighter spacing
         
-        # Draw each line on the portrait canvas
-        y_position = 20  # Start a bit higher for larger fonts
+        # Draw each line on the portrait canvas - less top margin
+        y_position = 10  # Reduced from 20 to 10
         
         for line in display_lines:
             draw.text((10, y_position), line, font=system_font, fill=0)
@@ -159,9 +156,11 @@ def display_on_epaper(message, font_size_key='medium'):
         print("Finalizing updates. Putting display to sleep...")
         epd.sleep()
         print("Finished successfully!")
+        return True
 
     except Exception as e:
         print(f"Error encountered: {e}")
+        return False
 
 
 @app.route('/print', methods=['POST'])
@@ -174,13 +173,24 @@ def print_message():
     message = request.form.get('message', 'Hello World')
     font_size = request.form.get('font_size', 'medium')
     
-    print(f"Printed: {message}")
+    print(f"Printing: {message}")
     print(f"Font size: {font_size}")
-    display_on_epaper(message, font_size)
+    
+    # Show printing message
+    success_message = "Printing..."
+    
+    # Display on e-paper (this takes ~20 seconds)
+    display_success = display_on_epaper(message, font_size)
+    
+    # Update message based on success
+    if display_success:
+        success_message = "Printed!"
+    else:
+        success_message = "Printing failed"
     
     # Render the template with success message
     return render_template('index.html', 
-                         printed_message=message,
+                         printed_message=success_message,
                          font_sizes=FONT_SIZES,
                          default_font=font_size,
                          max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},

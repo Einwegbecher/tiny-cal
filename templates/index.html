@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E-Paper Display App</title>
+    <title>E-Paper Display</title>
     <style>
         * {
             margin: 0;
@@ -68,27 +68,38 @@
             outline: none;
             font-family: inherit;
             resize: vertical;
-            min-height: 100px;
+            min-height: 120px;
         }
         
         textarea:focus {
             border-color: #667eea;
         }
         
-        select {
-            width: 100%;
-            padding: 14px 16px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s ease;
-            outline: none;
-            cursor: pointer;
-            background: white;
+        .font-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
-        select:focus {
+        .font-selector label {
+            margin-bottom: 0;
+            font-size: 13px;
+            color: #888;
+        }
+        
+        select.font-size {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            background: white;
+            width: auto;
+        }
+        
+        select.font-size:focus {
             border-color: #667eea;
+            outline: none;
         }
         
         button {
@@ -119,8 +130,10 @@
             padding: 15px;
             border-radius: 8px;
             font-size: 16px;
+            font-weight: 500;
             animation: fadeIn 0.3s ease;
-            display: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
         }
         
         .message.success {
@@ -128,6 +141,7 @@
             color: #155724;
             border: 1px solid #c3e6cb;
             display: block;
+            opacity: 1;
         }
         
         @keyframes fadeIn {
@@ -165,100 +179,94 @@
             margin-bottom: 5px;
         }
         
-        .font-preview {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 10px;
-            font-size: 12px;
-            color: #888;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-        
-        .font-option {
-            padding: 5px 10px;
-            background: #f5f5f5;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        
         .preview-section {
             margin-top: 20px;
-            padding: 15px;
+            padding: 12px;
             background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #6c757d;
+            border-radius: 6px;
+            border-left: 3px solid #6c757d;
         }
         
         .preview-section h4 {
             color: #495057;
-            margin-bottom: 10px;
-            font-size: 14px;
+            margin-bottom: 8px;
+            font-size: 13px;
         }
         
         .preview-text {
             font-family: monospace;
-            font-size: 14px;
+            font-size: 13px;
             color: #666;
             white-space: pre-wrap;
             background: white;
-            padding: 10px;
+            padding: 8px;
             border-radius: 4px;
             border: 1px solid #dee2e6;
             text-align: left;
+            max-height: 100px;
+            overflow-y: auto;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>E-Paper Display</h1>
-        <p class="description">Enter text below and select font size, then click to display on e-paper.</p>
+        <p class="description">Enter text below and click to display on e-paper.</p>
         
         <form action="/print" method="POST" id="displayForm">
             <div class="form-group">
                 <label for="message">Your Message:</label>
                 <textarea id="message" name="message" placeholder="Enter text to display..." required>Hello World
-This is a longer line that will automatically wrap to the next line if it exceeds the display width for the selected font size.</textarea>
+This is a test of the e-paper display with automatic line wrapping.</textarea>
             </div>
             
-            <div class="form-group">
-                <label for="font_size">Font Size:</label>
-                <select id="font_size" name="font_size">
+            <div class="form-group font-selector">
+                <label for="font_size">Size:</label>
+                <select id="font_size" name="font_size" class="font-size" onchange="updatePreview()">
                     {% for size_key, size_value in font_sizes.items() %}
                     <option value="{{ size_key }}" {% if size_key == default_font %}selected{% endif %}>
-                        {{ size_key|capitalize }} ({{ size_value }}px) - ~{{ max_lines[size_key] }} lines, ~{{ max_chars_per_line[size_key] }} chars/line
+                        {{ size_key|capitalize }}
                     </option>
                     {% endfor %}
                 </select>
-                <div class="font-preview">
-                    {% for size_key, size_value in font_sizes.items() %}
-                    <span class="font-option" style="font-size: {{ size_value }}px">{{ size_key|capitalize }}</span>
-                    {% endfor %}
-                </div>
             </div>
             
             <div class="preview-section">
-                <h4>Preview (how text will wrap):</h4>
+                <h4>Preview:</h4>
                 <div class="preview-text" id="previewText"></div>
             </div>
             
             <button type="submit">Display on E-Paper</button>
         </form>
         
+        <div class="message" id="statusMessage"></div>
+        
         {% if printed_message %}
-        <div class="message success">
-            ✓ Displayed message on e-paper with {{ font_sizes.get(request.form.get('font_size', 'medium'), '?') }}px font
-        </div>
+        <script>
+            // Show the message and hide after 8 seconds
+            document.addEventListener('DOMContentLoaded', function() {
+                const messageDiv = document.getElementById('statusMessage');
+                messageDiv.textContent = '{{ printed_message }}';
+                messageDiv.className = 'message success';
+                
+                setTimeout(function() {
+                    messageDiv.style.opacity = '0';
+                    setTimeout(function() {
+                        messageDiv.className = 'message';
+                    }, 500);
+                }, 8000);
+            });
+        </script>
         {% endif %}
         
         <div class="tips">
             <h4>Tips:</h4>
             <ul>
-                <li>Long lines will automatically wrap to fit the display width</li>
+                <li>Long lines will automatically wrap to fit the display</li>
                 <li>Enter multiple lines by pressing Enter</li>
-                <li>Or separate lines with commas (,)</li>
                 <li>Display may take ~20 seconds to refresh</li>
                 <li>Preview shows how your text will be wrapped</li>
+                <li>Maximum lines: Medium=~8, XLarge=~3</li>
             </ul>
         </div>
     </div>
@@ -267,21 +275,18 @@ This is a longer line that will automatically wrap to the next line if it exceed
         // Get the selected font size's limits
         function getCurrentLimits() {
             const select = document.getElementById('font_size');
-            const selectedOption = select.options[select.selectedIndex];
-            const optionText = selectedOption.text;
+            const fontKey = select.value;
             
-            // Extract max lines and chars per line from option text
-            const match = optionText.match(/~(\d+) lines, ~(\d+) chars\/line/);
-            if (match) {
-                return {
-                    maxLines: parseInt(match[1]),
-                    maxCharsPerLine: parseInt(match[2])
-                };
-            }
-            return { maxLines: 8, maxCharsPerLine: 15 };
+            // Hardcoded limits for our two font sizes
+            const limits = {
+                'medium': { maxCharsPerLine: 40, maxLines: 8 },
+                'xlarge': { maxCharsPerLine: 22, maxLines: 3 }
+            };
+            
+            return limits[fontKey] || { maxCharsPerLine: 40, maxLines: 8 };
         }
         
-        // Wrap text for preview (mimics server-side wrapping)
+        // Wrap text for preview
         function wrapTextForPreview(text, maxCharsPerLine) {
             const lines = text.split('\n');
             const wrappedLines = [];
@@ -292,7 +297,6 @@ This is a longer line that will automatically wrap to the next line if it exceed
                 
                 let currentLine = trimmed;
                 while (currentLine.length > maxCharsPerLine) {
-                    // Find the last space before maxCharsPerLine
                     let splitPos = currentLine.substring(0, maxCharsPerLine).lastIndexOf(' ');
                     if (splitPos <= 0) {
                         splitPos = maxCharsPerLine;
