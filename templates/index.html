@@ -294,6 +294,30 @@
             margin-bottom: 15px;
             font-size: 18px;
         }
+        
+        .calendar-preview {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .calendar-preview h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .calendar-preview p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .calendar-preview .no-events {
+            color: #888;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -334,13 +358,14 @@
         
         <!-- Calendar Tab -->
         <div id="calendar-tab" class="tab-content">
-            <div class="config-section">
-                <h3>Today's Calendar</h3>
-                <p>Click below to fetch and display today's calendar entries from your configured CalDAV server.</p>
-                <form action="/display_calendar" method="GET">
-                    <button type="submit">Display Today's Calendar</button>
-                </form>
+            <div class="calendar-preview">
+                <h4>Today's Calendar Preview</h4>
+                <p>Click the button below to fetch and display today's calendar entries from your CalDAV server.</p>
+                <p class="no-events">Events will be formatted with time and summary.</p>
             </div>
+            <form action="/display_calendar" method="GET">
+                <button type="submit">Display Today's Calendar</button>
+            </form>
         </div>
         
         <!-- Config Tab -->
@@ -358,7 +383,8 @@
                     <div class="form-group">
                         <label for="caldav_url">CalDAV URL:</label>
                         <input type="url" id="caldav_url" name="caldav_url" 
-                               value="{{ config.get('caldav_url', '') }}" placeholder="https://your-server.com/caldav/calendar">
+                               value="{{ config.get('caldav_url', '') }}" placeholder="https://your-server.com/caldav/username/calendar">
+                        <small style="color: #888;">Enter the full CalDAV calendar URL</small>
                     </div>
                     
                     <div class="form-group">
@@ -401,12 +427,12 @@
         <div class="tips">
             <h4>Tips:</h4>
             <ul>
+                <li><strong>Text Tab:</strong> Enter custom text to display</li>
+                <li><strong>Calendar Tab:</strong> Displays today's events from CalDAV (formatted with time)</li>
+                <li><strong>Config Tab:</strong> Set up your CalDAV connection</li>
                 <li>Text automatically wraps to fit the display width (296px)</li>
-                <li>Enter multiple lines by pressing Enter</li>
+                <li>Line counter shows current/max lines (Medium=7, XLarge=3)</li>
                 <li>Display may take ~20 seconds to refresh</li>
-                <li>Line counter shows current/max lines</li>
-                <li>Maximum lines: Medium=7, XLarge=3</li>
-                <li>Configure CalDAV in Config tab to display calendar</li>
             </ul>
         </div>
     </div>

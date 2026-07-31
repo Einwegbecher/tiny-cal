@@ -4,9 +4,6 @@ import time
 from datetime import datetime, timedelta
 from PIL import Image, ImageDraw, ImageFont
 from flask import Flask, render_template, request, session
-import requests
-from requests.auth import HTTPBasicAuth
-import xml.etree.ElementTree as ET
 import json
 import caldav
 
@@ -107,10 +104,25 @@ def wrap_text_dynamically(text, font, max_width):
     return lines
 
 
+def format_calendar_event(event, start_time):
+    """Format a calendar event for display."""
+    summary = str(event.vobject_instance.vevent.summary.value)
+    
+    # Get start time
+    dt_start = event.vobject_instance.vevent.dtstart.value
+    if isinstance(dt_start, datetime):
+        time_str = dt_start.strftime('%H:%M')
+    else:
+        time_str = "All day"
+    
+    return f"{time_str} - {summary}"
+
+
 def get_calendar_events(config):
     """Fetch today's events from CalDAV server."""
     try:
         if not config or not config.get('caldav_enabled'):
+            print("CalDAV not enabled")
             return []
         
         # Create CalDAV client
@@ -131,11 +143,14 @@ def get_calendar_events(config):
         
         # Use first calendar
         calendar = calendars[0]
+        print(f"Using calendar: {calendar}")
         
         # Get today's date range
         today = datetime.now().date()
         start = datetime.combine(today, datetime.min.time())
-        end = datetime.combine(today, datetime.max.time())
+        end = datetime.combine(today + timedelta(days=1), datetime.min.time())  # Next day at midnight
+        
+        print(f"Searching for events between {start} and {end}")
         
         # Search for events today
         events = calendar.search(
@@ -144,11 +159,23 @@ def get_calendar_events(config):
             event=True
         )
         
-        # Extract event summaries
+        print(f"Found {len(events)} events")
+        
+        # Extract and format event summaries
         event_summaries = []
         for event in events:
-            summary = str(event.vobject_instance.vevent.summary.value)
-            event_summaries.append(summary)
+            try:
+                formatted = format_calendar_event(event, start)
+                event_summaries.append(formatted)
+                print(f"Event: {formatted}")
+            except Exception as e:
+                print(f"Error processing event: {e}")
+                # Fallback to just summary
+                try:
+                    summary = str(event.vobject_instance.vevent.summary.value)
+                    event_summaries.append(summary)
+                except:
+                    event_summaries.append("Untitled Event")
         
         return event_summaries
         
@@ -226,17 +253,17 @@ def display_calendar():
     events = get_calendar_events(config)
     
     if events:
-        # Format events for display
+        # Format events for display with better formatting
         calendar_text = "\n".join(events)
         # Store in session
         session['last_message'] = calendar_text
         
-        # Display directly without going through print_message
+        # Display directly
         print(f"Printing calendar: {calendar_text}")
         display_success = display_on_epaper(calendar_text, 'medium')
         
         if display_success:
-            success_message = "Printed!"
+            success_message = "Calendar printed!"
         else:
             success_message = "Printing failed"
         
@@ -247,16 +274,19 @@ def display_calendar():
         except:
             config = {}
         
+        # Clear the last_message for text tab to keep them separate
+        session.pop('last_message', None)
+        
         return render_template('index.html', 
                              printed_message=success_message,
                              font_sizes=FONT_SIZES,
                              default_font='medium',
-                             last_message=calendar_text,
+                             last_message='',  # Clear for text tab
                              config=config,
                              max_lines=MAX_LINES)
     else:
         return render_template('index.html', 
-                             printed_message="No calendar entries found or CalDAV not configured",
+                             printed_message="No calendar entries found for today or CalDAV not configured",
                              font_sizes=FONT_SIZES,
                              default_font='medium',
                              last_message=session.get('last_message', ''),
