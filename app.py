@@ -1,8 +1,13 @@
 import sys
 import os
 import time
+from datetime import datetime, timedelta
 from PIL import Image, ImageDraw, ImageFont
 from flask import Flask, render_template, request, session
+import requests
+from requests.auth import HTTPBasicAuth
+import xml.etree.ElementTree as ET
+import json
 
 app = Flask(__name__)
 app.secret_key = 'e-paper-display-secret-key-12345'
@@ -13,9 +18,21 @@ FONT_SIZES = {
     'xlarge': 30
 }
 
-# Actual display resolution (296x160) - this is the CORRECT resolution
+# Character width estimates for each font size
+CHAR_WIDTHS = {
+    'medium': 10,   # ~10px per char at 18px font
+    'xlarge': 18    # ~18px per char at 30px font
+}
+
+# Display dimensions after rotation (296x160)
 DISPLAY_WIDTH = 296
 DISPLAY_HEIGHT = 160
+
+# Max lines for each font size (adjusted based on actual testing)
+MAX_LINES = {
+    'medium': 7,   # 7 lines fit with medium font
+    'xlarge': 3    # 3 lines fit with xlarge font
+}
 
 
 def get_font(size_key, fallback_size=18):
@@ -32,10 +49,8 @@ def get_font(size_key, fallback_size=18):
 
 def get_text_width(text, font):
     """Calculate the actual pixel width of text using the given font."""
-    # Create a temporary image to measure text
     temp_img = Image.new('RGB', (1, 1))
     temp_draw = ImageDraw.Draw(temp_img)
-    # Use textbbox to get the bounding box (left, top, right, bottom)
     bbox = temp_draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0]  # right - left = width
 
@@ -44,7 +59,7 @@ def get_text_height(font):
     """Calculate the actual pixel height of text using the given font."""
     temp_img = Image.new('RGB', (1, 1))
     temp_draw = ImageDraw.Draw(temp_img)
-    bbox = temp_draw.textbbox((0, 0), "Ag", font=font)  # Use 'Ag' to get ascender + descender
+    bbox = temp_draw.textbbox((0, 0), "Ag", font=font)
     return bbox[3] - bbox[1]  # bottom - top = height
 
 
@@ -91,17 +106,240 @@ def wrap_text_dynamically(text, font, max_width):
     return lines
 
 
+def parse_icalendar(ical_content):
+    """Parse iCalendar content and extract today's events."""
+    events = []
+    try:
+        # Simple parsing - look for EVENT blocks
+        lines = ical_content.split('\n')
+        current_event = {}
+        in_event = False
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('BEGIN:VEVENT'):
+                in_event = True
+                current_event = {}
+            elif line.startswith('END:VEVENT'):
+                in_event = False
+                if current_event.get('summary'):
+                    events.append(current_event)
+                current_event = {}
+            elif in_event:
+                if line.startswith('SUMMARY:'):
+                    current_event['summary'] = line.split(':', 1)[1].strip()
+                elif line.startswith('DTSTART:'):
+                    # Parse date/time
+                    dt_str = line.split(':', 1)[1].strip()
+                    if 'T' in dt_str:
+                        # DateTime format
+                        try:
+                            dt = datetime.strptime(dt_str, '%Y%m%dT%H%M%SZ')
+                            current_event['start'] = dt
+                        except:
+                            pass
+                    else:
+                        # Date format
+                        try:
+                            dt = datetime.strptime(dt_str, '%Y%m%d')
+                            current_event['start'] = dt
+                        except:
+                            pass
+                elif line.startswith('DTEND:'):
+                    dt_str = line.split(':', 1)[1].strip()
+                    if 'T' in dt_str:
+                        try:
+                            dt = datetime.strptime(dt_str, '%Y%m%dT%H%M%SZ')
+                            current_event['end'] = dt
+                        except:
+                            pass
+                    else:
+                        try:
+                            dt = datetime.strptime(dt_str, '%Y%m%d')
+                            current_event['end'] = dt
+                        except:
+                            pass
+        
+        # Filter for today's events
+        today = datetime.now().date()
+        today_events = []
+        for event in events:
+            if 'start' in event:
+                start_date = event['start'].date() if isinstance(event['start'], datetime) else event['start']
+                if start_date == today:
+                    today_events.append(event)
+        
+        # Sort by start time
+        today_events.sort(key=lambda x: x.get('start', datetime.min))
+        
+        # Extract just the summaries
+        return [e.get('summary', 'Untitled Event') for e in today_events]
+    except Exception as e:
+        print(f"Error parsing iCalendar: {e}")
+        return []
+
+
+def fetch_webdav_calendar(url, username, password):
+    """Fetch calendar from WebDAV server."""
+    try:
+        response = requests.get(
+            url,
+            auth=HTTPBasicAuth(username, password),
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.text
+        else:
+            print(f"WebDAV request failed: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error fetching WebDAV: {e}")
+        return None
+
+
+def get_calendar_text(config):
+    """Get today's calendar entries as formatted text."""
+    if not config or not config.get('webdav_enabled'):
+        return None
+    
+    ical_content = fetch_webdav_calendar(
+        config.get('webdav_url', ''),
+        config.get('webdav_username', ''),
+        config.get('webdav_password', '')
+    )
+    
+    if ical_content:
+        events = parse_icalendar(ical_content)
+        if events:
+            return "\n".join(events)
+    
+    return None
+
+
 @app.route('/')
 def index():
     """Render the main page with the form."""
     default_font = 'medium'
     # Get last message from session if available
     last_message = session.get('last_message', '')
+    
+    # Load config from file if exists
+    config = {}
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+    except:
+        pass
+    
     return render_template('index.html', 
                          printed_message=None,
                          font_sizes=FONT_SIZES,
                          default_font=default_font,
-                         last_message=last_message)
+                         last_message=last_message,
+                         config=config,
+                         max_lines=MAX_LINES)
+
+
+@app.route('/save_config', methods=['POST'])
+def save_config():
+    """Save WebDAV configuration."""
+    config = {
+        'webdav_enabled': request.form.get('webdav_enabled') == 'on',
+        'webdav_url': request.form.get('webdav_url', ''),
+        'webdav_username': request.form.get('webdav_username', ''),
+        'webdav_password': request.form.get('webdav_password', '')
+    }
+    
+    try:
+        with open('config.json', 'w') as f:
+            json.dump(config, f)
+        session['config_saved'] = True
+        return render_template('index.html', 
+                             printed_message="Configuration saved!",
+                             font_sizes=FONT_SIZES,
+                             default_font='medium',
+                             last_message=session.get('last_message', ''),
+                             config=config,
+                             max_lines=MAX_LINES)
+    except Exception as e:
+        return render_template('index.html', 
+                             printed_message=f"Error saving config: {e}",
+                             font_sizes=FONT_SIZES,
+                             default_font='medium',
+                             last_message=session.get('last_message', ''),
+                             config=config,
+                             max_lines=MAX_LINES)
+
+
+@app.route('/display_calendar')
+def display_calendar():
+    """Fetch and display today's calendar entries."""
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+    except:
+        config = {}
+    
+    calendar_text = get_calendar_text(config)
+    
+    if calendar_text:
+        # Store in session and redirect to print
+        session['last_message'] = calendar_text
+        return print_message()
+    else:
+        return render_template('index.html', 
+                             printed_message="No calendar entries found or WebDAV not configured",
+                             font_sizes=FONT_SIZES,
+                             default_font='medium',
+                             last_message=session.get('last_message', ''),
+                             config=config,
+                             max_lines=MAX_LINES)
+
+
+@app.route('/print', methods=['POST'])
+def print_message():
+    """
+    Handle the form submission.
+    Prints the message to CLI and displays it on the e-paper.
+    """
+    # Get the message and font size from the form
+    message = request.form.get('message', 'Hello World')
+    font_size = request.form.get('font_size', 'medium')
+    
+    # Store the message in session for next page load
+    session['last_message'] = message
+    
+    print(f"Printing: {message}")
+    print(f"Font size: {font_size}")
+    
+    # Show printing message
+    success_message = "Printing..."
+    
+    # Display on e-paper (this takes ~20 seconds)
+    display_success = display_on_epaper(message, font_size)
+    
+    # Update message based on success
+    if display_success:
+        success_message = "Printed!"
+    else:
+        success_message = "Printing failed"
+    
+    # Load config
+    config = {}
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+    except:
+        pass
+    
+    # Render the template with success message
+    return render_template('index.html', 
+                         printed_message=success_message,
+                         font_sizes=FONT_SIZES,
+                         default_font=font_size,
+                         last_message=message,
+                         config=config,
+                         max_lines=MAX_LINES)
 
 
 def display_on_epaper(message, font_size_key='medium'):
@@ -137,8 +375,8 @@ def display_on_epaper(message, font_size_key='medium'):
         available_width = DISPLAY_WIDTH - margin_left - margin_right
         available_height = DISPLAY_HEIGHT - margin_top - margin_bottom
         
-        # Calculate max lines
-        max_lines = max(1, available_height // total_line_height)
+        # Get max lines for this font
+        max_lines = MAX_LINES.get(font_size_key, 7)
         
         print(f"Available width: {available_width}px, height: {available_height}px")
         print(f"Text height: {text_height}px, line height: {total_line_height}px")
@@ -187,42 +425,6 @@ def display_on_epaper(message, font_size_key='medium'):
         import traceback
         traceback.print_exc()
         return False
-
-
-@app.route('/print', methods=['POST'])
-def print_message():
-    """
-    Handle the form submission.
-    Prints the message to CLI and displays it on the e-paper.
-    """
-    # Get the message and font size from the form
-    message = request.form.get('message', 'Hello World')
-    font_size = request.form.get('font_size', 'medium')
-    
-    # Store the message in session for next page load
-    session['last_message'] = message
-    
-    print(f"Printing: {message}")
-    print(f"Font size: {font_size}")
-    
-    # Show printing message
-    success_message = "Printing..."
-    
-    # Display on e-paper (this takes ~20 seconds)
-    display_success = display_on_epaper(message, font_size)
-    
-    # Update message based on success
-    if display_success:
-        success_message = "Printed!"
-    else:
-        success_message = "Printing failed"
-    
-    # Render the template with success message
-    return render_template('index.html', 
-                         printed_message=success_message,
-                         font_sizes=FONT_SIZES,
-                         default_font=font_size,
-                         last_message=message)
 
 
 if __name__ == '__main__':

@@ -45,6 +45,41 @@
             line-height: 1.6;
         }
         
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #e1e5e9;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 16px;
+            color: #666;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 600;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
         .form-group {
             margin-bottom: 20px;
             text-align: left;
@@ -131,6 +166,32 @@
         select.font-size:focus {
             border-color: #667eea;
             outline: none;
+        }
+        
+        input[type="text"], input[type="password"], input[type="url"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        input:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .checkbox-group input {
+            width: auto;
+            margin-bottom: 0;
         }
         
         button {
@@ -240,37 +301,105 @@
             color: #dc3545;
             font-weight: bold;
         }
+        
+        .config-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .config-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>E-Paper Display</h1>
-        <p class="description">Enter text below and click to display on e-paper.</p>
+        <p class="description">Display text or today's calendar on your e-paper screen.</p>
         
-        <form action="/print" method="POST" id="displayForm">
-            <div class="form-group">
-                <label for="message">Your Message:</label>
-                <div class="text-input-container">
-                    <textarea id="message" name="message" class="text-input-with-preview" 
-                              placeholder="Enter text to display..." required oninput="updatePreview()" onkeydown="handleKeyDown(event)">{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display." }}</textarea>
-                    <div class="preview-overlay" id="previewOverlay"></div>
+        <div class="tabs">
+            <button type="button" class="tab active" onclick="showTab('text')">Text</button>
+            <button type="button" class="tab" onclick="showTab('calendar')">Calendar</button>
+            <button type="button" class="tab" onclick="showTab('config')">Config</button>
+        </div>
+        
+        <!-- Text Tab -->
+        <div id="text-tab" class="tab-content active">
+            <form action="/print" method="POST" id="displayForm">
+                <div class="form-group">
+                    <label for="message">Your Message:</label>
+                    <div class="text-input-container">
+                        <textarea id="message" name="message" class="text-input-with-preview" 
+                                  placeholder="Enter text to display..." required oninput="updatePreview()" onkeydown="handleKeyDown(event)">{{ last_message if last_message else "Hello World\nThis is a test of the e-paper display." }}</textarea>
+                        <div class="preview-overlay" id="previewOverlay"></div>
+                    </div>
+                    <div class="line-counter" id="lineCounter"></div>
                 </div>
-                <div class="line-counter" id="lineCounter"></div>
+                
+                <div class="form-group font-selector">
+                    <label for="font_size">Size:</label>
+                    <select id="font_size" name="font_size" class="font-size" onchange="updatePreview()">
+                        {% for size_key, size_value in font_sizes.items() %}
+                        <option value="{{ size_key }}" {% if size_key == default_font %}selected{% endif %}>
+                            {{ size_key|capitalize }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <button type="submit">Display on E-Paper</button>
+            </form>
+        </div>
+        
+        <!-- Calendar Tab -->
+        <div id="calendar-tab" class="tab-content">
+            <div class="config-section">
+                <h3>Today's Calendar</h3>
+                <p>Click below to fetch and display today's calendar entries from your configured WebDAV server.</p>
+                <form action="/display_calendar" method="GET">
+                    <button type="submit">Display Today's Calendar</button>
+                </form>
             </div>
-            
-            <div class="form-group font-selector">
-                <label for="font_size">Size:</label>
-                <select id="font_size" name="font_size" class="font-size" onchange="updatePreview()">
-                    {% for size_key, size_value in font_sizes.items() %}
-                    <option value="{{ size_key }}" {% if size_key == default_font %}selected{% endif %}>
-                        {{ size_key|capitalize }}
-                    </option>
-                    {% endfor %}
-                </select>
+        </div>
+        
+        <!-- Config Tab -->
+        <div id="config-tab" class="tab-content">
+            <div class="config-section">
+                <h3>WebDAV Configuration</h3>
+                <p>Configure your WebDAV server to sync calendar entries.</p>
+                <form action="/save_config" method="POST">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="webdav_enabled" name="webdav_enabled" 
+                               {% if config.get('webdav_enabled') %}checked{% endif %}>
+                        <label for="webdav_enabled">Enable WebDAV Calendar Sync</label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="webdav_url">WebDAV URL:</label>
+                        <input type="url" id="webdav_url" name="webdav_url" 
+                               value="{{ config.get('webdav_url', '') }}" placeholder="https://your-server.com/calendar.ics">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="webdav_username">Username:</label>
+                        <input type="text" id="webdav_username" name="webdav_username" 
+                               value="{{ config.get('webdav_username', '') }}" placeholder="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="webdav_password">Password:</label>
+                        <input type="password" id="webdav_password" name="webdav_password" 
+                               value="{{ config.get('webdav_password', '') }}" placeholder="password">
+                    </div>
+                    
+                    <button type="submit">Save Configuration</button>
+                </form>
             </div>
-            
-            <button type="submit" id="submitBtn">Display on E-Paper</button>
-        </form>
+        </div>
         
         <div class="message" id="statusMessage"></div>
         
@@ -300,20 +429,40 @@
                 <li>Display may take ~20 seconds to refresh</li>
                 <li>Preview overlay shows how text will wrap</li>
                 <li>Line counter shows current/max lines</li>
-                <li>Maximum lines: Medium=~8, XLarge=~3</li>
+                <li>Maximum lines: Medium=7, XLarge=3</li>
+                <li>Configure WebDAV in Config tab to display calendar</li>
             </ul>
         </div>
     </div>
     
     <script>
-        // Character width estimates for preview (approximate for monospace display)
+        // Tab switching
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // Character width estimates for preview
         const CHAR_WIDTHS = {
             'medium': 10,
             'xlarge': 18
         };
         
         const DISPLAY_WIDTH = 296;
-        const MARGINS = 20; // 10px left + 10px right
+        const MARGINS = 20;
+        const MAX_LINES = {
+            'medium': 7,
+            'xlarge': 3
+        };
         
         function getCurrentLimits() {
             const select = document.getElementById('font_size');
@@ -321,15 +470,9 @@
             const charWidth = CHAR_WIDTHS[fontKey] || 10;
             const maxCharsPerLine = Math.floor((DISPLAY_WIDTH - MARGINS) / charWidth);
             
-            // Approximate line counts
-            const lineCounts = {
-                'medium': 8,
-                'xlarge': 3
-            };
-            
             return {
                 maxCharsPerLine: maxCharsPerLine,
-                maxLines: lineCounts[fontKey] || 8
+                maxLines: MAX_LINES[fontKey] || 7
             };
         }
         
@@ -362,7 +505,6 @@
             const textarea = document.getElementById('message');
             const preview = document.getElementById('previewOverlay');
             const lineCounter = document.getElementById('lineCounter');
-            const submitBtn = document.getElementById('submitBtn');
             const limits = getCurrentLimits();
             
             const lines = wrapTextForPreview(textarea.value, limits.maxCharsPerLine);
@@ -391,7 +533,6 @@
         function handleKeyDown(event) {
             // Allow Enter key to create new lines
             if (event.key === 'Enter') {
-                // Let the newline happen naturally
                 setTimeout(updatePreview, 0);
             }
         }
@@ -401,8 +542,12 @@
             const textarea = document.getElementById('message');
             const fontSelect = document.getElementById('font_size');
             
-            textarea.addEventListener('input', updatePreview);
-            fontSelect.addEventListener('change', updatePreview);
+            if (textarea) {
+                textarea.addEventListener('input', updatePreview);
+            }
+            if (fontSelect) {
+                fontSelect.addEventListener('change', updatePreview);
+            }
             
             updatePreview();
         });
