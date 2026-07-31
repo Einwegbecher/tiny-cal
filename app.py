@@ -14,51 +14,17 @@ FONT_SIZES = {
     'xlarge': 30
 }
 
-# Calculate max characters per line based on display width (200px after rotation)
-# Approximate character widths at different font sizes
+# Character width estimates for each font size (average width per character)
 CHAR_WIDTHS = {
-    'small': 8,    # ~8px per char at 12px font
-    'medium': 11,  # ~11px per char at 18px font
-    'large': 15,   # ~15px per char at 24px font
+    'small': 7,    # ~7px per char at 12px font
+    'medium': 10,  # ~10px per char at 18px font
+    'large': 14,   # ~14px per char at 24px font
     'xlarge': 18   # ~18px per char at 30px font
 }
 
 # Display dimensions after rotation (200x200)
 DISPLAY_WIDTH = 200
 DISPLAY_HEIGHT = 200
-
-
-def get_max_chars_per_line(font_size_key):
-    """Calculate maximum characters that fit in one line."""
-    char_width = CHAR_WIDTHS.get(font_size_key, 12)
-    # Leave some margin (20px total: 10px left + 10px right)
-    return max(1, (DISPLAY_WIDTH - 20) // char_width)
-
-
-def get_max_lines(font_size_key):
-    """Calculate maximum lines that fit on the display."""
-    font_size = FONT_SIZES.get(font_size_key, 20)
-    line_height = font_size + 8  # padding
-    # Leave some margin (40px total: 20px top + 20px bottom)
-    return max(1, (DISPLAY_HEIGHT - 40) // line_height)
-
-
-def get_max_total_chars(font_size_key):
-    """Calculate maximum total characters (chars per line * max lines)."""
-    return get_max_chars_per_line(font_size_key) * get_max_lines(font_size_key)
-
-
-@app.route('/')
-def index():
-    """Render the main page with the form."""
-    default_font = 'medium'
-    return render_template('index.html', 
-                         printed_message=None,
-                         font_sizes=FONT_SIZES,
-                         default_font=default_font,
-                         max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},
-                         max_lines={k: get_max_lines(k) for k in FONT_SIZES},
-                         max_total_chars={k: get_max_total_chars(k) for k in FONT_SIZES})
 
 
 def get_font(size_key, fallback_size=20):
@@ -73,10 +39,61 @@ def get_font(size_key, fallback_size=20):
             return ImageFont.load_default()
 
 
+def get_max_chars_per_line(font_size_key):
+    """Calculate maximum characters that fit in one line."""
+    char_width = CHAR_WIDTHS.get(font_size_key, 10)
+    # Leave margin: 10px left + 10px right = 20px total
+    return max(1, (DISPLAY_WIDTH - 20) // char_width)
+
+
+def get_max_lines(font_size_key):
+    """Calculate maximum lines that fit on the display."""
+    font_size = FONT_SIZES.get(font_size_key, 20)
+    line_height = font_size + 8  # padding
+    # Leave margin: 20px top + 20px bottom = 40px total
+    return max(1, (DISPLAY_HEIGHT - 40) // line_height)
+
+
+def wrap_text(text, max_chars_per_line):
+    """
+    Wrap text to multiple lines if it exceeds max_chars_per_line.
+    Preserves existing newlines and wraps long lines.
+    """
+    lines = []
+    # Split by existing newlines first
+    for paragraph in text.split('\n'):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        # Split long lines into chunks
+        while len(paragraph) > max_chars_per_line:
+            # Find the last space before max_chars_per_line to avoid breaking words
+            split_pos = paragraph[:max_chars_per_line].rfind(' ')
+            if split_pos <= 0:  # No space found, force break
+                split_pos = max_chars_per_line
+            lines.append(paragraph[:split_pos])
+            paragraph = paragraph[split_pos:].lstrip()
+        if paragraph:
+            lines.append(paragraph)
+    return lines
+
+
+@app.route('/')
+def index():
+    """Render the main page with the form."""
+    default_font = 'medium'
+    return render_template('index.html', 
+                         printed_message=None,
+                         font_sizes=FONT_SIZES,
+                         default_font=default_font,
+                         max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},
+                         max_lines={k: get_max_lines(k) for k in FONT_SIZES})
+
+
 def display_on_epaper(message, font_size_key='medium'):
     """
     Display a message on the Waveshare e-paper display.
-    Supports multi-line text with adjustable font size and automatic truncation.
+    Supports multi-line text with automatic line wrapping and font size control.
     Uses the same approach as quick_test.py: creates canvas with reversed dimensions
     (height x width) for portrait design, then rotates 90 degrees for landscape display.
     """
@@ -99,22 +116,25 @@ def display_on_epaper(message, font_size_key='medium'):
         max_lines = get_max_lines(font_size_key)
         
         # Split message into lines (supports both newline-separated and comma-separated)
-        lines = message.replace(',', '\n').split('\n')
-        lines = [line.strip() for line in lines if line.strip()]
+        raw_lines = message.replace(',', '\n').split('\n')
         
-        # If no lines or empty, use default
-        if not lines:
-            lines = ["Hello World"]
+        # Wrap each line to fit display width
+        wrapped_lines = []
+        for line in raw_lines:
+            line = line.strip()
+            if line:
+                wrapped_lines.extend(wrap_text(line, max_chars_per_line))
         
-        # Truncate lines that are too long
-        truncated_lines = []
-        for line in lines[:max_lines]:  # Limit to max lines
-            if len(line) > max_chars_per_line:
-                truncated_lines.append(line[:max_chars_per_line] + '...')
-            else:
-                truncated_lines.append(line)
+        # If no lines, use default
+        if not wrapped_lines:
+            wrapped_lines = ["Hello World"]
         
-        print(f"Displaying {len(truncated_lines)} lines (max {max_lines})")
+        # Limit to max lines that fit on display
+        display_lines = wrapped_lines[:max_lines]
+        
+        print(f"Displaying {len(display_lines)} lines (max {max_lines})")
+        for i, line in enumerate(display_lines):
+            print(f"  Line {i+1}: {line}")
         
         # Create canvas with REVERSED dimensions (Height x Width) for portrait design
         canvas = Image.new('1', (epd.height, epd.width), 255)
@@ -126,7 +146,7 @@ def display_on_epaper(message, font_size_key='medium'):
         # Draw each line on the portrait canvas
         y_position = 20  # Start a bit higher for larger fonts
         
-        for line in truncated_lines:
+        for line in display_lines:
             draw.text((10, y_position), line, font=system_font, fill=0)
             y_position += line_height
         
@@ -164,8 +184,7 @@ def print_message():
                          font_sizes=FONT_SIZES,
                          default_font=font_size,
                          max_chars_per_line={k: get_max_chars_per_line(k) for k in FONT_SIZES},
-                         max_lines={k: get_max_lines(k) for k in FONT_SIZES},
-                         max_total_chars={k: get_max_total_chars(k) for k in FONT_SIZES})
+                         max_lines={k: get_max_lines(k) for k in FONT_SIZES})
 
 
 if __name__ == '__main__':

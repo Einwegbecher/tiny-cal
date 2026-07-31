@@ -75,14 +75,6 @@
             border-color: #667eea;
         }
         
-        textarea.warning {
-            border-color: #ffc107;
-        }
-        
-        textarea.error {
-            border-color: #dc3545;
-        }
-        
         select {
             width: 100%;
             padding: 14px 16px;
@@ -122,13 +114,6 @@
             transform: translateY(0);
         }
         
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-        
         .message {
             margin-top: 25px;
             padding: 15px;
@@ -142,13 +127,6 @@
             background: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
-            display: block;
-        }
-        
-        .message.warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeeba;
             display: block;
         }
         
@@ -204,19 +182,30 @@
             font-size: 12px;
         }
         
-        .char-counter {
-            text-align: right;
-            font-size: 12px;
+        .preview-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #6c757d;
+        }
+        
+        .preview-section h4 {
+            color: #495057;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .preview-text {
+            font-family: monospace;
+            font-size: 14px;
             color: #666;
-            margin-top: 5px;
-        }
-        
-        .char-counter.warning {
-            color: #ffc107;
-        }
-        
-        .char-counter.error {
-            color: #dc3545;
+            white-space: pre-wrap;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            text-align: left;
         }
     </style>
 </head>
@@ -227,24 +216,17 @@
         
         <form action="/print" method="POST" id="displayForm">
             <div class="form-group">
-                <label for="message">Your Message (multiple lines supported):</label>
-                <textarea id="message" name="message" placeholder="Enter text to display..." required oninput="updateCharCounter()">Hello World
-Keep going
-You got this!</textarea>
-                <div class="char-counter" id="charCounter">
-                    <span id="charCount">0</span> / <span id="maxChars">0</span> characters
-                </div>
+                <label for="message">Your Message:</label>
+                <textarea id="message" name="message" placeholder="Enter text to display..." required>Hello World
+This is a longer line that will automatically wrap to the next line if it exceeds the display width for the selected font size.</textarea>
             </div>
             
             <div class="form-group">
                 <label for="font_size">Font Size:</label>
-                <select id="font_size" name="font_size" onchange="updateCharCounter()">
+                <select id="font_size" name="font_size">
                     {% for size_key, size_value in font_sizes.items() %}
-                    <option value="{{ size_key }}" {% if size_key == default_font %}selected{% endif %} 
-                            data-max-chars="{{ max_total_chars[size_key] }}"
-                            data-max-lines="{{ max_lines[size_key] }}"
-                            data-chars-per-line="{{ max_chars_per_line[size_key] }}">
-                        {{ size_key|capitalize }} ({{ size_value }}px) - ~{{ max_lines[size_key] }} lines max
+                    <option value="{{ size_key }}" {% if size_key == default_font %}selected{% endif %}>
+                        {{ size_key|capitalize }} ({{ size_value }}px) - ~{{ max_lines[size_key] }} lines, ~{{ max_chars_per_line[size_key] }} chars/line
                     </option>
                     {% endfor %}
                 </select>
@@ -255,7 +237,12 @@ You got this!</textarea>
                 </div>
             </div>
             
-            <button type="submit" id="submitBtn">Display on E-Paper</button>
+            <div class="preview-section">
+                <h4>Preview (how text will wrap):</h4>
+                <div class="preview-text" id="previewText"></div>
+            </div>
+            
+            <button type="submit">Display on E-Paper</button>
         </form>
         
         {% if printed_message %}
@@ -267,11 +254,11 @@ You got this!</textarea>
         <div class="tips">
             <h4>Tips:</h4>
             <ul>
+                <li>Long lines will automatically wrap to fit the display width</li>
                 <li>Enter multiple lines by pressing Enter</li>
                 <li>Or separate lines with commas (,)</li>
                 <li>Display may take ~20 seconds to refresh</li>
-                <li>Text that exceeds display limits will be truncated with "..."</li>
-                <li>Character counter helps you stay within limits</li>
+                <li>Preview shows how your text will be wrapped</li>
             </ul>
         </div>
     </div>
@@ -281,46 +268,67 @@ You got this!</textarea>
         function getCurrentLimits() {
             const select = document.getElementById('font_size');
             const selectedOption = select.options[select.selectedIndex];
-            return {
-                maxChars: parseInt(selectedOption.dataset.maxChars) || 200,
-                maxLines: parseInt(selectedOption.dataset.maxLines) || 8,
-                charsPerLine: parseInt(selectedOption.dataset.charsPerLine) || 20
-            };
+            const optionText = selectedOption.text;
+            
+            // Extract max lines and chars per line from option text
+            const match = optionText.match(/~(\d+) lines, ~(\d+) chars\/line/);
+            if (match) {
+                return {
+                    maxLines: parseInt(match[1]),
+                    maxCharsPerLine: parseInt(match[2])
+                };
+            }
+            return { maxLines: 8, maxCharsPerLine: 15 };
         }
         
-        // Update character counter
-        function updateCharCounter() {
+        // Wrap text for preview (mimics server-side wrapping)
+        function wrapTextForPreview(text, maxCharsPerLine) {
+            const lines = text.split('\n');
+            const wrappedLines = [];
+            
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                let currentLine = trimmed;
+                while (currentLine.length > maxCharsPerLine) {
+                    // Find the last space before maxCharsPerLine
+                    let splitPos = currentLine.substring(0, maxCharsPerLine).lastIndexOf(' ');
+                    if (splitPos <= 0) {
+                        splitPos = maxCharsPerLine;
+                    }
+                    wrappedLines.push(currentLine.substring(0, splitPos));
+                    currentLine = currentLine.substring(splitPos).trim();
+                }
+                if (currentLine) {
+                    wrappedLines.push(currentLine);
+                }
+            }
+            
+            return wrappedLines;
+        }
+        
+        // Update preview
+        function updatePreview() {
             const textarea = document.getElementById('message');
-            const counter = document.getElementById('charCounter');
-            const charCount = document.getElementById('charCount');
-            const maxCharsSpan = document.getElementById('maxChars');
-            const submitBtn = document.getElementById('submitBtn');
-            
+            const preview = document.getElementById('previewText');
             const limits = getCurrentLimits();
-            const text = textarea.value;
-            const charCountValue = text.length;
-            const maxChars = limits.maxChars;
             
-            charCount.textContent = charCountValue;
-            maxCharsSpan.textContent = maxChars;
+            const lines = wrapTextForPreview(textarea.value, limits.maxCharsPerLine);
+            const displayLines = lines.slice(0, limits.maxLines);
             
-            // Update counter color based on usage
-            counter.className = 'char-counter';
-            if (charCountValue > maxChars * 0.8) {
-                counter.classList.add('warning');
-            }
-            if (charCountValue > maxChars) {
-                counter.classList.remove('warning');
-                counter.classList.add('error');
-            }
-            
-            // Optionally disable submit button if over limit
-            // submitBtn.disabled = charCountValue > maxChars;
+            preview.textContent = displayLines.join('\n');
         }
         
-        // Initialize counter on page load
+        // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            updateCharCounter();
+            const textarea = document.getElementById('message');
+            const fontSelect = document.getElementById('font_size');
+            
+            textarea.addEventListener('input', updatePreview);
+            fontSelect.addEventListener('change', updatePreview);
+            
+            updatePreview();
         });
     </script>
 </body>
