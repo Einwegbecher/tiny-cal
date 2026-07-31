@@ -228,9 +228,32 @@ def display_calendar():
     if events:
         # Format events for display
         calendar_text = "\n".join(events)
-        # Store in session and display
+        # Store in session
         session['last_message'] = calendar_text
-        return print_message()
+        
+        # Display directly without going through print_message
+        print(f"Printing calendar: {calendar_text}")
+        display_success = display_on_epaper(calendar_text, 'medium')
+        
+        if display_success:
+            success_message = "Printed!"
+        else:
+            success_message = "Printing failed"
+        
+        # Load config for template
+        try:
+            with open('config.json', 'r') as f:
+                config = json.load(f)
+        except:
+            config = {}
+        
+        return render_template('index.html', 
+                             printed_message=success_message,
+                             font_sizes=FONT_SIZES,
+                             default_font='medium',
+                             last_message=calendar_text,
+                             config=config,
+                             max_lines=MAX_LINES)
     else:
         return render_template('index.html', 
                              printed_message="No calendar entries found or CalDAV not configured",
